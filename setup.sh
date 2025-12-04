@@ -31,7 +31,7 @@ case "$DATASET_SIZE" in
         DATASET_NAME="raven_medium"
         ;;
     large)
-        NUM_SAMPLES=10000
+        NUM_SAMPLES=5000
         DATASET_NAME="raven_large"
         ;;
     *)

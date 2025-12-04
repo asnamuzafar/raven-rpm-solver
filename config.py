@@ -22,7 +22,7 @@ NUM_CHOICES = 8
 USE_SIMPLE_ENCODER = False  # Use pretrained ResNet encoder
 
 # ===== Training =====
-BATCH_SIZE = 16         # Smaller batch for memory
+BATCH_SIZE = 32         # Smaller batch for memory
 EPOCHS = 8              # Stop early to prevent overfitting (best val was around epoch 5-6)
 LEARNING_RATE = 1e-4    # This worked before
 ENCODER_LR = 1e-4       # Same as main (not used now)
