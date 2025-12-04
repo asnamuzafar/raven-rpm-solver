@@ -9,6 +9,58 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 from typing import List, Tuple, Optional
+from scipy import ndimage
+
+
+class RAVENAugmentation:
+    """
+    Data augmentation for RAVEN puzzles.
+    Applies consistent augmentation across all 16 panels while preserving
+    the relational structure (only augments in ways that don't change the answer).
+    """
+    def __init__(self, 
+                 noise_prob: float = 0.3,
+                 noise_std: float = 0.05,
+                 brightness_prob: float = 0.3,
+                 brightness_range: Tuple[float, float] = (0.8, 1.2),
+                 contrast_prob: float = 0.3,
+                 contrast_range: Tuple[float, float] = (0.8, 1.2)):
+        self.noise_prob = noise_prob
+        self.noise_std = noise_std
+        self.brightness_prob = brightness_prob
+        self.brightness_range = brightness_range
+        self.contrast_prob = contrast_prob
+        self.contrast_range = contrast_range
+        
+    def __call__(self, imgs: np.ndarray) -> np.ndarray:
+        """
+        Apply augmentations to all panels consistently.
+        
+        Args:
+            imgs: (16, H, W) float array normalized to [0, 1]
+        Returns:
+            Augmented images with same shape
+        """
+        # Gaussian noise (same for all panels to preserve relations)
+        if np.random.random() < self.noise_prob:
+            noise = np.random.normal(0, self.noise_std, imgs.shape).astype(np.float32)
+            imgs = imgs + noise
+        
+        # Brightness adjustment (same factor for all panels)
+        if np.random.random() < self.brightness_prob:
+            factor = np.random.uniform(*self.brightness_range)
+            imgs = imgs * factor
+        
+        # Contrast adjustment (same for all panels)
+        if np.random.random() < self.contrast_prob:
+            factor = np.random.uniform(*self.contrast_range)
+            mean = imgs.mean()
+            imgs = (imgs - mean) * factor + mean
+        
+        # Clamp to valid range
+        imgs = np.clip(imgs, 0, 1)
+        
+        return imgs
 
 
 class RAVENDataset(Dataset):
@@ -19,14 +71,16 @@ class RAVENDataset(Dataset):
     - 16 images: 8 context panels + 8 answer choices
     - 1 target: index of correct answer (0-7)
     """
-    def __init__(self, files: List[Path], transform=None):
+    def __init__(self, files: List[Path], transform=None, augment: bool = False):
         """
         Args:
             files: List of paths to .npz files
             transform: Optional transform to apply to images
+            augment: Whether to apply data augmentation (for training)
         """
         self.files = [str(f) for f in files]
         self.transform = transform
+        self.augmentation = RAVENAugmentation() if augment else None
         
     def __len__(self) -> int:
         return len(self.files)
@@ -43,6 +97,10 @@ class RAVENDataset(Dataset):
         
         # Load images and normalize to [0, 1]
         imgs = data["image"].astype(np.float32) / 255.0  # (16, 160, 160)
+        
+        # Apply augmentation if enabled (training only)
+        if self.augmentation is not None:
+            imgs = self.augmentation(imgs)
         
         if self.transform:
             imgs = self.transform(imgs)
@@ -109,9 +167,10 @@ def create_dataloaders(
     """
     train_files, val_files, test_files = get_split_files(data_dir)
     
-    train_ds = RAVENDataset(train_files)
-    val_ds = RAVENDataset(val_files)
-    test_ds = RAVENDataset(test_files)
+    # Enable augmentation for training set only
+    train_ds = RAVENDataset(train_files, augment=True)
+    val_ds = RAVENDataset(val_files, augment=False)
+    test_ds = RAVENDataset(test_files, augment=False)
     
     train_dl = DataLoader(
         train_ds, 

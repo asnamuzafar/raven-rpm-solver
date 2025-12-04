@@ -37,10 +37,13 @@ try:
 except Exception as e:
     print(f"✗ Model test failed: {e}")
 
-# Check for data
+# Check for data (supports small, medium, large datasets)
 from pathlib import Path
 data_dirs = [
+    Path("./data/raven_medium"),
     Path("./data/raven_small"),
+    Path("./data/raven_large"),
+    Path("/content/drive/MyDrive/raven_medium"),
     Path("/content/drive/MyDrive/raven_small"),
 ]
 data_found = False
@@ -52,7 +55,7 @@ for d in data_dirs:
             data_found = True
             break
 if not data_found:
-    print("✗ No data found. Please generate or copy RAVEN dataset to ./data/raven_small/")
+    print("✗ No data found. Run ./setup.sh to generate dataset")
 
 print("\n" + "="*50)
 print("Setup test complete!")

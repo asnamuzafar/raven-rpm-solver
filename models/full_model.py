@@ -40,6 +40,7 @@ class FullRAVENModel(nn.Module):
 def create_model(
     model_type: str = 'transformer',
     pretrained_encoder: bool = True,
+    freeze_encoder: bool = False,
     feature_dim: int = 512,
     hidden_dim: int = 512,
     num_heads: int = 8,
@@ -52,6 +53,7 @@ def create_model(
     Args:
         model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid'
         pretrained_encoder: Whether to use pretrained ResNet weights
+        freeze_encoder: Whether to freeze encoder weights (prevents overfitting)
         feature_dim: Dimension of visual features (default 512 for ResNet-18)
         hidden_dim: Hidden dimension for reasoning modules
         num_heads: Number of attention heads (for transformer)
@@ -61,8 +63,8 @@ def create_model(
     Returns:
         FullRAVENModel instance
     """
-    # Create encoder
-    encoder = RAVENFeatureExtractor(pretrained=pretrained_encoder)
+    # Create encoder (optionally frozen for small datasets)
+    encoder = RAVENFeatureExtractor(pretrained=pretrained_encoder, freeze=freeze_encoder)
     
     # Create reasoner based on type
     if model_type == 'transformer':

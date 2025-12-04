@@ -4,7 +4,7 @@ RAVEN RPM Solver - Training Script
 Train all reasoning models on the RAVEN dataset.
 
 Usage:
-    python train.py --data_dir ./data/raven_small --epochs 15
+    python train.py --data_dir ./data/raven_medium --epochs 30
 """
 import argparse
 import json
@@ -16,7 +16,12 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from config import *
+from config import (
+    BATCH_SIZE, EPOCHS, LEARNING_RATE, WEIGHT_DECAY, 
+    SEED, DEVICE, NUM_WORKERS,
+    HIDDEN_DIM, NUM_HEADS, NUM_LAYERS, DROPOUT,
+    LABEL_SMOOTHING, FREEZE_ENCODER, PATIENCE
+)
 from models import create_model, FullRAVENModel
 from utils import create_dataloaders
 
@@ -131,20 +136,31 @@ def train_model(
     lr: float,
     device: str,
     model_name: str,
-    save_dir: Path
+    save_dir: Path,
+    label_smoothing: float = 0.0,
+    patience: int = 7
 ) -> dict:
-    """Full training loop for a model"""
+    """Full training loop for a model with early stopping"""
     model = model.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=WEIGHT_DECAY)
+    
+    # Only optimize parameters that require gradients (supports frozen encoder)
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    num_trainable = sum(p.numel() for p in trainable_params)
+    num_total = sum(p.numel() for p in model.parameters())
+    print(f"Trainable parameters: {num_trainable:,} / {num_total:,} ({100*num_trainable/num_total:.1f}%)")
+    
+    optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
     history = {
         'train_loss': [], 'train_acc': [],
         'val_loss': [], 'val_acc': []
     }
     best_val_acc = 0
+    best_val_loss = float('inf')
     best_state = None
+    epochs_without_improvement = 0
     
     print(f"\n{'='*60}")
     print(f"Training: {model_name}")
@@ -180,9 +196,24 @@ def train_model(
               f"Train Loss: {train_loss:.4f} Acc: {train_acc:.3f} | "
               f"Val Loss: {val_loss:.4f} Acc: {val_acc:.3f}")
         
+        # Track best model by BOTH validation loss and accuracy
+        improved = False
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            improved = True
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_state = model.state_dict().copy()
+            improved = True
+        
+        # Early stopping based on validation loss
+        if improved:
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= patience:
+                tqdm.write(f"\nEarly stopping at epoch {epoch+1} (no improvement for {patience} epochs)")
+                break
     
     # Save best model
     save_path = save_dir / f"{model_name.lower().replace(' ', '_')}_model.pth"
@@ -190,9 +221,10 @@ def train_model(
         'model_state_dict': best_state,
         'model_name': model_name,
         'best_val_acc': best_val_acc,
+        'best_val_loss': best_val_loss,
         'history': history
     }, save_path)
-    print(f"Saved best model to {save_path} (val_acc: {best_val_acc:.4f})")
+    print(f"Saved best model to {save_path} (val_acc: {best_val_acc:.4f}, val_loss: {best_val_loss:.4f})")
     
     # Load best weights
     model.load_state_dict(best_state)
@@ -202,7 +234,7 @@ def train_model(
 
 def main():
     parser = argparse.ArgumentParser(description='Train RAVEN models')
-    parser.add_argument('--data_dir', type=str, default='./data/raven_small',
+    parser.add_argument('--data_dir', type=str, default='./data/raven_medium',
                         help='Path to RAVEN data directory')
     parser.add_argument('--save_dir', type=str, default='./saved_models',
                         help='Directory to save models')
@@ -217,6 +249,12 @@ def main():
                         help='Models to train')
     parser.add_argument('--seed', type=int, default=SEED,
                         help='Random seed')
+    parser.add_argument('--freeze_encoder', action='store_true', default=FREEZE_ENCODER,
+                        help='Freeze pretrained encoder weights')
+    parser.add_argument('--label_smoothing', type=float, default=LABEL_SMOOTHING,
+                        help='Label smoothing factor')
+    parser.add_argument('--patience', type=int, default=PATIENCE,
+                        help='Early stopping patience')
     args = parser.parse_args()
     
     # Setup
@@ -228,6 +266,9 @@ def main():
     print(f"Device: {device}")
     print(f"Data directory: {args.data_dir}")
     print(f"Save directory: {save_dir}")
+    print(f"Freeze encoder: {args.freeze_encoder}")
+    print(f"Label smoothing: {args.label_smoothing}")
+    print(f"Early stopping patience: {args.patience}")
     
     # Create dataloaders
     train_dl, val_dl, test_dl = create_dataloaders(
@@ -250,7 +291,15 @@ def main():
     
     for model_type in args.models:
         name = model_names.get(model_type, model_type)
-        model = create_model(model_type=model_type, pretrained_encoder=True)
+        model = create_model(
+            model_type=model_type, 
+            pretrained_encoder=True,
+            freeze_encoder=args.freeze_encoder,
+            hidden_dim=HIDDEN_DIM,
+            num_heads=NUM_HEADS,
+            num_layers=NUM_LAYERS,
+            dropout=DROPOUT
+        )
         
         history = train_model(
             model=model,
@@ -260,7 +309,9 @@ def main():
             lr=args.lr,
             device=device,
             model_name=name,
-            save_dir=save_dir
+            save_dir=save_dir,
+            label_smoothing=args.label_smoothing,
+            patience=args.patience
         )
         
         all_histories[name] = history

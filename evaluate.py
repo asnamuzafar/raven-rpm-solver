@@ -4,7 +4,7 @@ RAVEN RPM Solver - Evaluation Script
 Evaluate all trained models and generate comparison reports.
 
 Usage:
-    python evaluate.py --data_dir ./data/raven_small --models_dir ./saved_models
+    python evaluate.py --data_dir ./data/raven_medium --models_dir ./saved_models
 """
 import argparse
 import json
@@ -99,7 +99,7 @@ def visualize_prediction(
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate RAVEN models')
-    parser.add_argument('--data_dir', type=str, default='./data/raven_small',
+    parser.add_argument('--data_dir', type=str, default='./data/raven_medium',
                         help='Path to RAVEN data directory')
     parser.add_argument('--models_dir', type=str, default='./saved_models',
                         help='Directory containing trained models')

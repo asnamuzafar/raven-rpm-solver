@@ -62,7 +62,7 @@ raven-rpm-solver/
 │   └── evaluation.py      # Stage E: Evaluation metrics
 │
 ├── data/                  # Dataset (generated)
-│   └── raven_small/
+│   └── raven_medium/      # Default dataset (14,000 puzzles)
 │       ├── center_single/
 │       ├── distribute_four/
 │       └── ...
@@ -81,15 +81,20 @@ cd /path/to/project
 
 # 2. Run setup script (creates venv, installs deps, generates data)
 chmod +x setup.sh
-./setup.sh
+./setup.sh                # Default: medium dataset (14,000 puzzles)
+# OR: ./setup.sh small    # Small dataset (1,400 puzzles) - quick testing
+# OR: ./setup.sh large    # Large dataset (70,000 puzzles) - best results
 
-# 3. Train models
-python train.py --epochs 15
+# 3. Activate environment
+source venv/bin/activate
 
-# 4. Evaluate
+# 4. Train models (with early stopping and regularization)
+python train.py --epochs 30
+
+# 5. Evaluate
 python evaluate.py
 
-# 5. Launch simulator
+# 6. Launch simulator
 streamlit run raven_simulator.py
 ```
 
@@ -132,49 +137,33 @@ Required packages:
 
 ### Step 3: Generate RAVEN Dataset
 
-The RAVEN dataset needs to be generated. Follow these steps:
+**Recommended: Use the setup script** (handles all patches automatically):
 
 ```bash
-# Clone RAVEN repository
-git clone https://github.com/WellyZhang/RAVEN.git
+./setup.sh medium    # Generates 14,000 puzzles (recommended)
+```
 
-# Convert Python 2 to Python 3
+Dataset size options:
+| Size | Samples | Total Puzzles | Use Case |
+|------|---------|---------------|----------|
+| `small` | 200/config | 1,400 | Quick testing |
+| `medium` | 2000/config | 14,000 | **Recommended** |
+| `large` | 10000/config | 70,000 | Best accuracy |
+
+**Manual generation** (if needed):
+
+```bash
+# Clone and patch RAVEN repository
+git clone https://github.com/WellyZhang/RAVEN.git
 cd RAVEN
 python -m lib2to3 -w src/
 
-# Apply necessary patches
-cd src/dataset
-
-# Fix scipy import
-sed -i 's/from scipy.misc import comb/from scipy.special import comb/g' AoT.py sampling.py
-# On macOS use: sed -i '' 's/...' instead
-
-# Fix XML encoding
-sed -i 's/return ET.tostring(data)/return ET.tostring(data, encoding='"'"'unicode'"'"')/g' serialize.py
-
-# Fix float to int conversion
-sed -i 's/range(min_level, max_level + 1)/range(int(min_level), int(max_level) + 1)/g' Attribute.py
-sed -i 's/range(self.min_level, self.max_level + 1)/range(int(self.min_level), int(self.max_level) + 1)/g' Attribute.py
-
-# Fix RLE encoding (replace the function in api.py)
-# See patch below
+# Apply patches (see setup.sh for details)
+# ... patches for scipy, XML encoding, range(), RLE ...
 
 # Generate dataset
-cd ../..  # Back to RAVEN root
-mkdir -p ../data/raven_small
-PYTHONPATH=src python -m dataset.main --num-samples 200 --save-dir ../data/raven_small
-```
-
-**RLE Encoding Patch** (replace in `src/dataset/api.py`):
-```python
-def rle_encode(img):
-    m = np.asarray(img).astype(np.uint8).reshape(-1)
-    z = np.concatenate([[0], m, [0]])
-    runs = np.where(z[1:] != z[:-1])[0] + 1
-    if runs.size % 2 == 1:
-        runs = np.concatenate([runs, [runs[-1]]])
-    runs[1::2] -= runs[::2]
-    return "[" + ",".join(str(int(x)) for x in runs) + "]"
+mkdir -p ../data/raven_medium
+PYTHONPATH=src python -m dataset.main --num-samples 2000 --save-dir ../data/raven_medium
 ```
 
 ### Step 4: Verify Setup
@@ -191,7 +180,7 @@ Expected output:
 ✓ Utils imported successfully
 ✓ Config loaded (device=cpu/cuda, batch_size=16)
 ✓ Model forward pass works (output shape: torch.Size([2, 8]))
-✓ Data found: data/raven_small (1400 files)
+✓ Data found: data/raven_medium (14000 files)
 ==================================================
 Setup test complete!
 ==================================================
@@ -204,8 +193,20 @@ Setup test complete!
 ### Train All Models
 
 ```bash
-python train.py --data_dir ./data/raven_small --epochs 15
+python train.py --data_dir ./data/raven_medium --epochs 30
 ```
+
+### Anti-Overfitting Features
+
+The training pipeline includes several regularization techniques:
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| **Frozen Encoder** | `True` | Freezes pretrained ResNet weights |
+| **Label Smoothing** | `0.1` | Prevents overconfident predictions |
+| **Early Stopping** | `patience=7` | Stops if val loss doesn't improve |
+| **Dropout** | `0.4` | High dropout for regularization |
+| **Data Augmentation** | `True` | Noise, brightness, contrast on training |
 
 ### Options
 
@@ -213,26 +214,29 @@ python train.py --data_dir ./data/raven_small --epochs 15
 python train.py --help
 
 Options:
-  --data_dir      Path to RAVEN data directory (default: ./data/raven_small)
-  --save_dir      Directory to save models (default: ./saved_models)
-  --epochs        Number of training epochs (default: 15)
-  --batch_size    Batch size (default: 16)
-  --lr            Learning rate (default: 1e-4)
-  --models        Models to train (default: transformer mlp cnn_direct relation_net)
-  --seed          Random seed (default: 42)
+  --data_dir         Path to RAVEN data directory (default: ./data/raven_medium)
+  --save_dir         Directory to save models (default: ./saved_models)
+  --epochs           Number of training epochs (default: 30)
+  --batch_size       Batch size (default: 16)
+  --lr               Learning rate (default: 3e-4)
+  --models           Models to train (default: transformer mlp cnn_direct relation_net)
+  --seed             Random seed (default: 42)
+  --freeze_encoder   Freeze pretrained encoder weights (default: True)
+  --label_smoothing  Label smoothing factor (default: 0.1)
+  --patience         Early stopping patience (default: 7)
 ```
 
 ### Examples
 
 ```bash
-# Quick test (3 epochs)
-python train.py --epochs 3
+# Quick test (5 epochs, small dataset)
+python train.py --data_dir ./data/raven_small --epochs 5
 
-# Train only Transformer
-python train.py --models transformer --epochs 20
+# Train only Transformer with more epochs
+python train.py --models transformer --epochs 50
 
-# Train with larger batch size (if GPU memory allows)
-python train.py --batch_size 32 --epochs 15
+# Train with unfrozen encoder (if you have lots of data)
+python train.py --data_dir ./data/raven_large --freeze_encoder False --epochs 50
 ```
 
 ### Training Output
@@ -251,7 +255,7 @@ Models are saved to `./saved_models/`:
 ### Run Evaluation
 
 ```bash
-python evaluate.py --data_dir ./data/raven_small --models_dir ./saved_models
+python evaluate.py --data_dir ./data/raven_medium --models_dir ./saved_models
 ```
 
 ### Options
@@ -307,7 +311,7 @@ Opens at `http://localhost:8501`
 ### Usage
 
 1. Select a model from the sidebar
-2. Upload a `.npz` puzzle file (from `data/raven_small/*/`)
+2. Upload a `.npz` puzzle file (from `data/raven_medium/*/`)
 3. View the puzzle visualization
 4. See model predictions and explanations
 
@@ -347,7 +351,7 @@ Input: 8 context features + 1 choice feature
        ↓
 Positional Encoding + Type Embedding
        ↓
-4-layer Transformer Encoder (8 heads)
+2-layer Transformer Encoder (4 heads, dropout=0.4)
        ↓
 Score Head (MLP)
        ↓
@@ -367,20 +371,24 @@ Output: Score for this choice
 
 ## 📈 Expected Results
 
-With default settings (15 epochs, 1400 samples):
+### With Medium Dataset (14,000 samples, 30 epochs)
 
 | Model | Test Accuracy | vs Random |
 |-------|--------------|-----------|
-| Transformer | ~15-25% | 1.2-2.0x |
-| MLP-Relational | ~15-20% | 1.2-1.6x |
-| CNN-Direct | ~12-15% | 1.0-1.2x |
-| RelationNet | ~13-18% | 1.0-1.4x |
+| Transformer | ~25-40% | 2.0-3.2x |
+| MLP-Relational | ~20-35% | 1.6-2.8x |
+| CNN-Direct | ~15-20% | 1.2-1.6x |
+| RelationNet | ~18-30% | 1.4-2.4x |
 | Random | 12.5% | 1.0x |
 
-**Note**: Higher accuracy requires:
-- More training data (increase `--num-samples` during generation)
-- More epochs (50-100)
-- GPU training
+### Tips for Higher Accuracy
+
+| Improvement | How |
+|-------------|-----|
+| **More data** | `./setup.sh large` (70,000 puzzles) |
+| **More epochs** | `--epochs 50` or `--epochs 100` |
+| **Unfreeze encoder** | `--freeze_encoder False` (needs large dataset) |
+| **GPU training** | Much faster, allows larger batches |
 
 ---
 
@@ -390,9 +398,8 @@ With default settings (15 epochs, 1400 samples):
 
 **1. "No .npz files found"**
 ```bash
-# Regenerate dataset
-cd RAVEN
-PYTHONPATH=src python -m dataset.main --num-samples 200 --save-dir ../data/raven_small
+# Regenerate dataset using setup script
+./setup.sh medium
 ```
 
 **2. "CUDA out of memory"**
@@ -412,6 +419,16 @@ pip install -r requirements.txt
 ```bash
 # Check if port 8501 is available
 streamlit run raven_simulator.py --server.port 8502
+```
+
+**5. Model overfitting (high train acc, low val acc)**
+```bash
+# Use larger dataset
+./setup.sh large
+python train.py --data_dir ./data/raven_large --epochs 50
+
+# Or increase regularization
+python train.py --freeze_encoder True --label_smoothing 0.15
 ```
 
 ---

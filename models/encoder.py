@@ -69,9 +69,25 @@ class RAVENFeatureExtractor(nn.Module):
     """
     Full Stage A: Extract features from all 16 panels (8 context + 8 choices)
     """
-    def __init__(self, pretrained: bool = True):
+    def __init__(self, pretrained: bool = True, freeze: bool = False):
         super().__init__()
         self.encoder = ResNetVisualEncoder(pretrained=pretrained)
+        
+        # Freeze encoder weights to prevent overfitting on small datasets
+        if freeze:
+            self.freeze_encoder()
+    
+    def freeze_encoder(self):
+        """Freeze all encoder parameters"""
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+        print("Encoder weights frozen (not trainable)")
+    
+    def unfreeze_encoder(self):
+        """Unfreeze all encoder parameters"""
+        for param in self.encoder.parameters():
+            param.requires_grad = True
+        print("Encoder weights unfrozen (trainable)")
         
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """

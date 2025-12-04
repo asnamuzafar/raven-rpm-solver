@@ -5,7 +5,7 @@ import torch
 from pathlib import Path
 
 # ===== Paths =====
-DATA_DIR = Path("./data/raven_small")
+DATA_DIR = Path("./data/raven_medium")  # Use medium dataset for better training
 MODELS_DIR = Path("./saved_models")
 RESULTS_DIR = Path("./results")
 
@@ -14,17 +14,20 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ===== Model Architecture =====
 FEATURE_DIM = 512
-HIDDEN_DIM = 512
-NUM_HEADS = 8
-NUM_LAYERS = 4
-DROPOUT = 0.1
+HIDDEN_DIM = 256  # Reduced from 512 to limit capacity
+NUM_HEADS = 4     # Reduced from 8
+NUM_LAYERS = 2    # Reduced from 4 to prevent overfitting
+DROPOUT = 0.4     # Increased from 0.1 for regularization
 NUM_CHOICES = 8
 
 # ===== Training =====
 BATCH_SIZE = 16
-EPOCHS = 15
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 0.01
+EPOCHS = 30       # More epochs with early stopping
+LEARNING_RATE = 3e-4  # Slightly higher LR for faster convergence
+WEIGHT_DECAY = 0.05   # Increased from 0.01 for regularization
+LABEL_SMOOTHING = 0.1  # Prevent overconfident predictions
+FREEZE_ENCODER = True  # Freeze pretrained weights to prevent overfitting
+PATIENCE = 7           # Early stopping patience
 NUM_WORKERS = 2
 
 # ===== Dataset =====
