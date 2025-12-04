@@ -148,7 +148,7 @@ Dataset size options:
 |------|---------|---------------|----------|
 | `small` | 200/config | 1,400 | Quick testing |
 | `medium` | 2000/config | 14,000 | **Recommended** |
-| `large` | 10000/config | 70,000 | Best accuracy |
+| `large` | 5000/config | 35,000 | Best accuracy |
 
 **Manual generation** (if needed):
 

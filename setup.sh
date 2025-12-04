@@ -13,7 +13,7 @@
 #   ./setup.sh              # Default: generates medium dataset (2000 samples)
 #   ./setup.sh small        # Small dataset (200 samples) - for quick testing
 #   ./setup.sh medium       # Medium dataset (2000 samples) - recommended
-#   ./setup.sh large        # Large dataset (10000 samples) - best performance
+#   ./setup.sh large        # Large dataset (5000 samples) - best performance
 # ==============================================
 
 set -e  # Exit on error
