@@ -20,10 +20,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Optional, Callable, Any
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import re
+
+# Try to import symbolic reasoner for rule-trace fidelity evaluation
+try:
+    from models.baselines import SymbolicReasoner
+    SYMBOLIC_AVAILABLE = True
+except ImportError:
+    SYMBOLIC_AVAILABLE = False
 
 
 def compute_metrics(
@@ -457,4 +464,165 @@ class ModelEvaluator:
         
         plt.show()
         return fig
+    
+    def evaluate_rule_trace_fidelity(
+        self,
+        symbolic_reasoner: Any,
+        context_attrs_list: List[List[Dict]],
+        choice_attrs_list: List[List[Dict]],
+        targets: List[int],
+        ground_truth_rules: Optional[List[Dict]] = None
+    ) -> Dict[str, Any]:
+        """
+        Evaluate rule-trace fidelity for symbolic models.
+        Required by goal.md Stage E.
+        
+        Measures how well the symbolic model's detected rules and predictions
+        align with the ground truth.
+        
+        Args:
+            symbolic_reasoner: SymbolicReasoner instance
+            context_attrs_list: List of context attributes for each puzzle
+            choice_attrs_list: List of choice attributes for each puzzle
+            targets: Ground truth answer indices
+            ground_truth_rules: Optional ground truth rule annotations
+            
+        Returns:
+            Dict with rule-trace fidelity metrics
+        """
+        results = {
+            'total_puzzles': len(targets),
+            'correct_predictions': 0,
+            'rules_detected': defaultdict(int),
+            'prediction_accuracy': 0.0,
+            'rule_consistency': 0.0,
+            'detailed_traces': []
+        }
+        
+        rule_matches = []
+        
+        for i, (ctx_attrs, ch_attrs, target) in enumerate(
+            zip(context_attrs_list, choice_attrs_list, targets)
+        ):
+            # Get symbolic prediction and trace
+            pred, scores, explanation = symbolic_reasoner.predict(ctx_attrs, ch_attrs)
+            full_trace = symbolic_reasoner.get_full_trace(ctx_attrs, ch_attrs)
+            
+            # Check correctness
+            is_correct = pred == target
+            if is_correct:
+                results['correct_predictions'] += 1
+            
+            # Count detected rules
+            for attr, attr_data in full_trace['detected_rules'].items():
+                for rule_info in attr_data['rules']:
+                    rule_name = rule_info[0] if isinstance(rule_info, tuple) else rule_info
+                    results['rules_detected'][rule_name] += 1
+            
+            # Compare with ground truth if available
+            if ground_truth_rules and i < len(ground_truth_rules):
+                gt_rule = ground_truth_rules[i]
+                detected = set(full_trace['detected_rules'].keys())
+                gt_set = set(gt_rule.get('rules', []))
+                
+                # Calculate rule match score (Jaccard similarity)
+                if detected or gt_set:
+                    match_score = len(detected & gt_set) / len(detected | gt_set) if (detected | gt_set) else 0
+                    rule_matches.append(match_score)
+            
+            # Store detailed trace (limit to first 10 for memory)
+            if len(results['detailed_traces']) < 10:
+                results['detailed_traces'].append({
+                    'puzzle_idx': i,
+                    'predicted': pred,
+                    'target': target,
+                    'correct': is_correct,
+                    'scores': scores,
+                    'rules': full_trace['detected_rules'],
+                    'explanation': explanation[:5] if explanation else []  # First 5 lines
+                })
+        
+        # Calculate final metrics
+        results['prediction_accuracy'] = results['correct_predictions'] / results['total_puzzles']
+        
+        if rule_matches:
+            results['rule_consistency'] = np.mean(rule_matches)
+        
+        # Convert defaultdict to regular dict for JSON serialization
+        results['rules_detected'] = dict(results['rules_detected'])
+        
+        return results
+    
+    def evaluate_explanation_quality(
+        self,
+        model_predictions: List[Dict],
+        symbolic_traces: List[Dict],
+        targets: List[int]
+    ) -> Dict[str, float]:
+        """
+        Evaluate explanation quality metrics.
+        Required by goal.md Stage E.
+        
+        Measures:
+        - Explanation coverage: % of predictions with valid explanations
+        - Explanation accuracy: % of correct explanations for correct predictions
+        - Rule diversity: Number of unique rules used across puzzles
+        
+        Args:
+            model_predictions: List of prediction dicts with 'predicted' and 'confidence'
+            symbolic_traces: List of symbolic trace dicts
+            targets: Ground truth targets
+            
+        Returns:
+            Dict with explanation quality metrics
+        """
+        results = {
+            'explanation_coverage': 0.0,
+            'explanation_accuracy': 0.0,
+            'rule_diversity': 0,
+            'avg_rules_per_puzzle': 0.0
+        }
+        
+        n_puzzles = len(targets)
+        n_with_explanation = 0
+        n_correct_with_explanation = 0
+        n_correct = 0
+        all_rules = set()
+        total_rules = 0
+        
+        for i, (pred_info, trace) in enumerate(zip(model_predictions, symbolic_traces)):
+            pred = pred_info.get('predicted', -1)
+            target = targets[i]
+            is_correct = pred == target
+            
+            if is_correct:
+                n_correct += 1
+            
+            # Check if explanation exists
+            detected_rules = trace.get('detected_rules', {})
+            has_rules = any(
+                attr_data.get('rules', []) 
+                for attr_data in detected_rules.values()
+            )
+            
+            if has_rules:
+                n_with_explanation += 1
+                if is_correct:
+                    n_correct_with_explanation += 1
+                
+                # Collect rules
+                for attr_data in detected_rules.values():
+                    for rule in attr_data.get('rules', []):
+                        rule_name = rule[0] if isinstance(rule, tuple) else rule
+                        all_rules.add(rule_name)
+                        total_rules += 1
+        
+        results['explanation_coverage'] = n_with_explanation / n_puzzles if n_puzzles > 0 else 0
+        results['explanation_accuracy'] = (
+            n_correct_with_explanation / n_correct if n_correct > 0 else 0
+        )
+        results['rule_diversity'] = len(all_rules)
+        results['avg_rules_per_puzzle'] = total_rules / n_puzzles if n_puzzles > 0 else 0
+        
+        return results
 

@@ -5,6 +5,14 @@ An interactive Streamlit application for visualizing and solving
 Raven's Progressive Matrices puzzles using neural reasoning.
 
 Run with: streamlit run raven_simulator.py
+
+Features as per goal.md:
+- Upload or select RPM puzzles
+- View 3×3 grid
+- Observe how each reasoning engine processes it
+- Display predicted answer from each model
+- Show attention maps for DL models
+- Show transparent rule traces for symbolic models
 """
 import streamlit as st
 import numpy as np
@@ -13,15 +21,108 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pathlib import Path
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Import models (if running from project directory)
+# Import project modules
 try:
-    from models import create_model, load_model
-    from config import DEVICE
+    from models import create_model, load_model, SymbolicReasoner, SymbolicTokenizer
+    from models.encoder import RAVENFeatureExtractor
+    from config import DEVICE, HIDDEN_DIM, NUM_HEADS, NUM_LAYERS, DROPOUT
     MODELS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     MODELS_AVAILABLE = False
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Warning: Could not import models: {e}")
+
+
+def load_trained_models(models_dir: Path, device: str) -> dict:
+    """
+    Load all trained models from the saved_models directory.
+    Returns dict mapping model name to (model, model_type).
+    """
+    models = {}
+    models_dir = Path(models_dir)
+    
+    model_type_map = {
+        'transformer': 'transformer',
+        'mlp_relational': 'mlp',
+        'mlp-relational': 'mlp',
+        'cnn_direct': 'cnn_direct',
+        'cnn-direct': 'cnn_direct',
+        'relationnet': 'relation_net',
+        'relation_net': 'relation_net',
+        'hybrid': 'hybrid'
+    }
+    
+    if not models_dir.exists():
+        return models
+    
+    for model_file in models_dir.glob("*_model.pth"):
+        try:
+            checkpoint = torch.load(model_file, map_location=device)
+            model_name = checkpoint.get('model_name', model_file.stem)
+            
+            # Determine model type from filename
+            model_type = 'transformer'
+            for key, mtype in model_type_map.items():
+                if key in model_file.stem.lower().replace('-', '_'):
+                    model_type = mtype
+                    break
+            
+            model = create_model(model_type=model_type, pretrained_encoder=False)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model = model.to(device)
+            model.eval()
+            
+            models[model_name] = {
+                'model': model,
+                'type': model_type,
+                'val_acc': checkpoint.get('best_val_acc', 0),
+                'val_loss': checkpoint.get('best_val_loss', 0)
+            }
+        except Exception as e:
+            print(f"Warning: Could not load {model_file}: {e}")
+    
+    return models
+
+
+def run_inference(model, imgs: np.ndarray, device: str) -> tuple:
+    """
+    Run inference on a puzzle using the model.
+    Returns (predicted_idx, probabilities)
+    """
+    # Prepare input: normalize to [0, 1] and add batch dimension
+    x = torch.from_numpy(imgs.astype(np.float32) / 255.0).unsqueeze(0).to(device)
+    
+    model.eval()
+    with torch.no_grad():
+        logits = model(x)
+        probs = F.softmax(logits, dim=1)[0].cpu().numpy()
+        pred_idx = int(logits.argmax(dim=1).item())
+    
+    return pred_idx, probs
+
+
+def get_attention_weights(model, imgs: np.ndarray, device: str, choice_idx: int = 0) -> np.ndarray:
+    """
+    Extract attention weights from transformer model for visualization.
+    Returns attention matrix or None if not a transformer.
+    """
+    x = torch.from_numpy(imgs.astype(np.float32) / 255.0).unsqueeze(0).to(device)
+    
+    model.eval()
+    with torch.no_grad():
+        # Get features from encoder
+        ctx_feat, choice_feat = model.encoder(x)
+        
+        # Check if reasoner has attention method
+        if hasattr(model.reasoner, 'get_attention_weights'):
+            attn_weights = model.reasoner.get_attention_weights(ctx_feat, choice_feat, choice_idx)
+            if attn_weights:
+                # Return last layer attention
+                return attn_weights[-1][0].cpu().numpy()  # (num_heads, seq_len, seq_len)
+    
+    return None
 
 
 class SymbolicAnalyzer:
@@ -30,6 +131,9 @@ class SymbolicAnalyzer:
     Implements rules from goal.md: constant, progression, XOR, distribution.
     Provides transparent rule traces for interpretability.
     """
+    
+    def __init__(self):
+        self.symbolic_reasoner = SymbolicReasoner() if MODELS_AVAILABLE else None
     
     def analyze_puzzle(self, imgs: np.ndarray) -> dict:
         """
@@ -136,7 +240,7 @@ class SymbolicAnalyzer:
     def predict_answer(self, imgs: np.ndarray, rules: list) -> tuple:
         """
         Predict the answer based on detected rules.
-        Returns (predicted_idx, explanation)
+        Returns (predicted_idx, explanations, choice_scores)
         """
         panels = imgs[:8]
         choices = imgs[8:]
@@ -179,6 +283,41 @@ class SymbolicAnalyzer:
             return best_idx, explanations, choice_scores
         
         return 0, ["No prediction possible"], []
+
+
+def plot_attention_heatmap(attn_weights: np.ndarray, title: str = "Attention Weights"):
+    """
+    Plot attention weights as a heatmap.
+    """
+    if attn_weights is None:
+        return None
+    
+    # Average over heads if multiple
+    if len(attn_weights.shape) == 3:
+        attn = attn_weights.mean(axis=0)
+    else:
+        attn = attn_weights
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    labels = [f'P{i}' for i in range(8)] + ['Choice']
+    
+    sns.heatmap(
+        attn, 
+        ax=ax, 
+        cmap='Blues', 
+        xticklabels=labels,
+        yticklabels=labels,
+        annot=True,
+        fmt='.2f',
+        vmin=0,
+        vmax=1
+    )
+    ax.set_title(title, fontweight='bold')
+    ax.set_xlabel('Key')
+    ax.set_ylabel('Query')
+    
+    return fig
 
 
 # ===== Streamlit App Configuration =====
@@ -237,16 +376,57 @@ Interactive demonstration of neural reasoning on Raven's Progressive Matrices
 </p>
 """, unsafe_allow_html=True)
 
+# ===== Load Models =====
+@st.cache_resource
+def get_trained_models():
+    """Load trained models (cached for performance)"""
+    if not MODELS_AVAILABLE:
+        return {}
+    return load_trained_models(Path("./saved_models"), DEVICE)
+
+trained_models = get_trained_models()
+
 # ===== Sidebar =====
 st.sidebar.header("⚙️ Settings")
 
+# Build model selection list based on available trained models
+model_options = []
+if "Transformer" in trained_models or any("transformer" in k.lower() for k in trained_models):
+    model_options.append("Transformer (Primary)")
+if "MLP-Relational" in trained_models or any("mlp" in k.lower() for k in trained_models):
+    model_options.append("MLP-Relational")
+if "CNN-Direct" in trained_models or any("cnn" in k.lower() for k in trained_models):
+    model_options.append("CNN-Direct")
+if "RelationNet" in trained_models or any("relation" in k.lower() for k in trained_models):
+    model_options.append("Relation Network")
+
+model_options.append("Symbolic Analyzer")
+if len([k for k in trained_models if k]) >= 2:
+    model_options.append("Compare All")
+
+# Default to available options or fallback
+if not model_options:
+    model_options = ["Symbolic Analyzer"]
+
 model_choice = st.sidebar.selectbox(
     "Select Reasoning Model",
-    ["Transformer (Primary)", "MLP-Relational", "CNN-Direct", "Symbolic Analyzer", "Compare All"]
+    model_options
 )
 
 show_probabilities = st.sidebar.checkbox("Show Probability Distribution", value=True)
+show_attention = st.sidebar.checkbox("Show Attention Maps (Transformer)", value=True)
 show_explanation = st.sidebar.checkbox("Show Rule Explanation", value=True)
+
+st.sidebar.markdown("---")
+
+# Show loaded models info
+if trained_models:
+    st.sidebar.markdown("### 🤖 Loaded Models")
+    for name, info in trained_models.items():
+        acc = info.get('val_acc', 0)
+        st.sidebar.markdown(f"- **{name}**: {acc:.1%} acc")
+else:
+    st.sidebar.warning("No trained models found. Run `train.py` first or use Symbolic Analyzer.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
@@ -258,8 +438,31 @@ on Raven's Progressive Matrices (RPM) puzzles.
 - 🤖 **Transformer**: Attention-based reasoning
 - 🔗 **MLP-Relational**: Row/column patterns
 - 📊 **CNN-Direct**: Feature classification
-- 📐 **Symbolic**: Rule-based logic
+- 📐 **Symbolic**: Rule-based logic (constant, progression, XOR, distribution)
 """)
+
+# ===== Helper Functions =====
+def get_model_for_choice(model_choice: str, trained_models: dict):
+    """Get the appropriate model for the user's selection."""
+    choice_lower = model_choice.lower()
+    
+    for name, info in trained_models.items():
+        name_lower = name.lower()
+        if "transformer" in choice_lower and "transformer" in name_lower:
+            return info['model'], name
+        if "mlp" in choice_lower and ("mlp" in name_lower or "relational" in name_lower):
+            return info['model'], name
+        if "cnn" in choice_lower and "cnn" in name_lower:
+            return info['model'], name
+        if "relation" in choice_lower and "relation" in name_lower:
+            return info['model'], name
+    
+    # Fallback to first available model
+    if trained_models:
+        first_key = list(trained_models.keys())[0]
+        return trained_models[first_key]['model'], first_key
+    
+    return None, None
 
 # ===== Main Content =====
 col1, col2 = st.columns([2, 1])
@@ -339,42 +542,8 @@ if uploaded_file is not None:
         st.markdown("---")
         st.subheader("🎯 Model Predictions")
         
-        # Generate predictions (placeholder - replace with actual model inference)
-        np.random.seed(hash(uploaded_file.name) % 2**32)
-        
-        if model_choice == "Transformer (Primary)":
-            # Simulate transformer prediction
-            probs = np.random.dirichlet(np.ones(8) * 0.5)
-            pred_idx = np.argmax(probs)
-            confidence = probs[pred_idx]
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Predicted Answer", f"Choice {pred_idx}")
-            with col2:
-                st.metric("Confidence", f"{confidence:.1%}")
-            with col3:
-                st.metric("Ground Truth", f"Choice {target}")
-            
-            if pred_idx == target:
-                st.success("✅ Correct prediction!")
-            else:
-                st.error(f"❌ Incorrect. Model predicted Choice {pred_idx}, but correct answer is Choice {target}")
-            
-            if show_probabilities:
-                st.subheader("Probability Distribution")
-                fig3, ax = plt.subplots(figsize=(10, 4))
-                colors = ['#28a745' if i == target else '#667eea' for i in range(8)]
-                bars = ax.bar(range(8), probs, color=colors, alpha=0.8)
-                ax.set_xlabel('Choice')
-                ax.set_ylabel('Probability')
-                ax.set_xticks(range(8))
-                ax.axhline(y=0.125, color='r', linestyle='--', alpha=0.5, label='Random (12.5%)')
-                ax.legend()
-                st.pyplot(fig3)
-                plt.close()
-                
-        elif model_choice == "Symbolic Analyzer":
+        if model_choice == "Symbolic Analyzer":
+            # Use symbolic rule-based analyzer
             analyzer = SymbolicAnalyzer()
             analysis = analyzer.analyze_puzzle(imgs)
             
@@ -396,9 +565,12 @@ if uploaded_file is not None:
                     st.write("\n**Choice Scores:**")
                     score_df = {f"Choice {i}": f"{s:.2f}" for i, s, _ in choice_scores[:4]}
                     st.write(score_df)
+                
+                confidence = analysis['confidence']
             else:
-                # Fallback to random if no rules detected
-                pred_idx = np.random.randint(0, 8)
+                # Fallback to first choice if no rules detected
+                pred_idx = 0
+                confidence = 0.0
             
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -406,7 +578,7 @@ if uploaded_file is not None:
             with col2:
                 st.metric("Rules Found", len(analysis['rules_detected']))
             with col3:
-                st.metric("Confidence", f"{analysis['confidence']*100:.0f}%")
+                st.metric("Ground Truth", f"Choice {target}")
             
             if pred_idx == target:
                 st.success("✅ Correct prediction!")
@@ -414,41 +586,127 @@ if uploaded_file is not None:
                 st.error(f"❌ Incorrect. Correct answer is Choice {target}")
                 
         elif model_choice == "Compare All":
+            # Compare all available models
             st.write("**Comparison of All Models:**")
             
-            results = {
-                'Transformer': {'pred': np.random.randint(0, 8), 
-                               'conf': np.random.uniform(0.3, 0.9)},
-                'MLP-Relational': {'pred': np.random.randint(0, 8), 
-                                   'conf': np.random.uniform(0.3, 0.9)},
-                'CNN-Direct': {'pred': np.random.randint(0, 8), 
-                              'conf': np.random.uniform(0.3, 0.9)},
-                'Symbolic': {'pred': np.random.randint(0, 8), 
-                            'conf': np.random.uniform(0.3, 0.9)},
+            results = {}
+            
+            # Run each trained model
+            for name, info in trained_models.items():
+                try:
+                    model = info['model']
+                    pred_idx, probs = run_inference(model, imgs, DEVICE)
+                    results[name] = {
+                        'pred': pred_idx,
+                        'conf': float(probs[pred_idx]),
+                        'correct': pred_idx == target
+                    }
+                except Exception as e:
+                    st.warning(f"Error with {name}: {e}")
+            
+            # Add symbolic analyzer
+            analyzer = SymbolicAnalyzer()
+            analysis = analyzer.analyze_puzzle(imgs)
+            if analysis['rules_detected']:
+                sym_pred, _, _ = analyzer.predict_answer(imgs, analysis['rules_detected'])
+            else:
+                sym_pred = 0
+            results['Symbolic'] = {
+                'pred': sym_pred,
+                'conf': analysis['confidence'],
+                'correct': sym_pred == target
             }
             
-            cols = st.columns(len(results))
-            for col, (name, res) in zip(cols, results.items()):
-                with col:
-                    correct = res['pred'] == target
-                    st.markdown(f"**{name}**")
-                    st.metric("Prediction", f"Choice {res['pred']}")
-                    st.metric("Confidence", f"{res['conf']:.1%}")
-                    if correct:
-                        st.success("✓")
-                    else:
-                        st.error("✗")
-        
-        else:
-            # MLP-Relational or CNN-Direct
-            probs = np.random.dirichlet(np.ones(8) * 0.5)
-            pred_idx = np.argmax(probs)
+            # Display results
+            if results:
+                cols = st.columns(len(results))
+                for col, (name, res) in zip(cols, results.items()):
+                    with col:
+                        st.markdown(f"**{name}**")
+                        st.metric("Prediction", f"Choice {res['pred']}")
+                        st.metric("Confidence", f"{res['conf']:.1%}")
+                        if res['correct']:
+                            st.success("✓ Correct")
+                        else:
+                            st.error("✗ Wrong")
             
-            st.metric("Predicted Answer", f"Choice {pred_idx}")
-            if pred_idx == target:
-                st.success("✅ Correct prediction!")
+            # Summary
+            st.markdown("---")
+            correct_models = [n for n, r in results.items() if r['correct']]
+            st.info(f"**Summary**: {len(correct_models)}/{len(results)} models predicted correctly")
+            
+        else:
+            # Use selected neural model
+            model, model_name = get_model_for_choice(model_choice, trained_models)
+            
+            if model is not None:
+                pred_idx, probs = run_inference(model, imgs, DEVICE)
+                confidence = float(probs[pred_idx])
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Predicted Answer", f"Choice {pred_idx}")
+                with col2:
+                    st.metric("Confidence", f"{confidence:.1%}")
+                with col3:
+                    st.metric("Ground Truth", f"Choice {target}")
+                
+                if pred_idx == target:
+                    st.success(f"✅ Correct prediction by {model_name}!")
+                else:
+                    st.error(f"❌ Incorrect. Model predicted Choice {pred_idx}, but correct answer is Choice {target}")
+                
+                # Show probability distribution
+                if show_probabilities:
+                    st.subheader("Probability Distribution")
+                    fig3, ax = plt.subplots(figsize=(10, 4))
+                    colors = ['#28a745' if i == target else '#667eea' for i in range(8)]
+                    bars = ax.bar(range(8), probs, color=colors, alpha=0.8)
+                    
+                    # Highlight predicted choice
+                    bars[pred_idx].set_edgecolor('red')
+                    bars[pred_idx].set_linewidth(3)
+                    
+                    ax.set_xlabel('Choice')
+                    ax.set_ylabel('Probability')
+                    ax.set_xticks(range(8))
+                    ax.axhline(y=0.125, color='r', linestyle='--', alpha=0.5, label='Random (12.5%)')
+                    ax.legend()
+                    ax.set_title(f'{model_name} - Probability per Choice')
+                    st.pyplot(fig3)
+                    plt.close()
+                
+                # Show attention map for transformer
+                if show_attention and "transformer" in model_choice.lower():
+                    st.subheader("🔍 Attention Visualization")
+                    attn_weights = get_attention_weights(model, imgs, DEVICE, pred_idx)
+                    if attn_weights is not None:
+                        fig_attn = plot_attention_heatmap(
+                            attn_weights, 
+                            f"Attention Weights (Choice {pred_idx})"
+                        )
+                        if fig_attn:
+                            st.pyplot(fig_attn)
+                            plt.close()
+                            st.caption("Shows how much attention each panel pays to other panels when evaluating the selected choice.")
+                    else:
+                        st.info("Attention visualization not available for this model.")
             else:
-                st.error(f"❌ Incorrect. Correct answer is Choice {target}")
+                # Fallback: simulate prediction (when no trained models available)
+                st.warning("⚠️ No trained model found. Please run `python train.py` first.")
+                st.info("Showing simulated prediction for demonstration purposes.")
+                
+                np.random.seed(hash(uploaded_file.name) % 2**32)
+                probs = np.random.dirichlet(np.ones(8) * 0.5)
+                pred_idx = np.argmax(probs)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Predicted Answer", f"Choice {pred_idx} (simulated)")
+                with col2:
+                    st.metric("Confidence", f"{probs[pred_idx]:.1%}")
+                with col3:
+                    st.metric("Ground Truth", f"Choice {target}")
         
         # ===== Explanation =====
         if show_explanation:
@@ -456,25 +714,32 @@ if uploaded_file is not None:
             st.subheader("📝 How the Model Reasons")
             
             st.markdown("""
-            **Reasoning Pipeline:**
+            **Reasoning Pipeline (per goal.md stages):**
             
-            1. **Visual Encoding** (Stage A)
-               - Each panel is processed through ResNet-18
+            1. **Stage A - Visual Encoding**
+               - Each panel is processed through ResNet-18 (CNN)
                - Produces 512-dimensional feature vectors
                
-            2. **Pattern Analysis** (Stage B-C)
+            2. **Stage B - Tokenization**
+               - Features are converted to symbolic attributes
+               - Predicts: shape, size, color, count, position
+               
+            3. **Stage C - Deep Learning Reasoning**
                - Transformer uses self-attention to find relationships
                - Analyzes row-wise and column-wise patterns
+               - Scores each candidate answer
                
-            3. **Rule Detection**
+            4. **Stage D - Alternative Reasoners**
+               - *CNN-Direct*: Simple classification baseline
+               - *RelationNet*: Pairwise relational reasoning
+               - *Symbolic*: Explicit rule-based logic
+               - *Hybrid*: Combines DL + Symbolic
+               
+            5. **Rule Types Detected:**
                - *Constant*: Same attribute across row/column
-               - *Progression*: Attribute changes systematically (e.g., +1, +2, +3)
+               - *Progression*: Systematic change (+1, +2, +3)
                - *Distribution*: Each value appears once per row/column
                - *XOR*: Combination rule between elements
-               
-            4. **Answer Selection**
-               - Scores each candidate against detected patterns
-               - Selects the choice that best completes the puzzle
             """)
             
     except Exception as e:
@@ -493,12 +758,26 @@ else:
         </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Show sample puzzles from data directory
+    data_dirs = [Path("./data/raven_medium"), Path("./data/raven_small")]
+    sample_files = []
+    for data_dir in data_dirs:
+        if data_dir.exists():
+            sample_files.extend(list(data_dir.rglob("*.npz"))[:5])
+    
+    if sample_files:
+        st.markdown("---")
+        st.subheader("📁 Sample Puzzles Available")
+        st.write("Found puzzle files in the data directory. Upload one to get started!")
+        for f in sample_files[:5]:
+            st.code(str(f))
 
 # ===== Footer =====
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #888; font-size: 0.9rem;'>
     <p><strong>RAVEN RPM Solver</strong> - Neural-Symbolic Reasoning System</p>
-    <p>Built with PyTorch & Streamlit | Stages A-F Implementation</p>
+    <p>Built with PyTorch & Streamlit | Stages A-F Implementation (goal.md)</p>
 </div>
 """, unsafe_allow_html=True)

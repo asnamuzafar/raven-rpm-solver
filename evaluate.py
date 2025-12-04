@@ -1,7 +1,16 @@
 """
 RAVEN RPM Solver - Evaluation Script
 
-Evaluate all trained models and generate comparison reports.
+Stage E: Comprehensive evaluation module as per goal.md.
+Evaluates all trained models and generates comparison reports.
+
+Metrics (per goal.md):
+• accuracy on standard test sets
+• accuracy on unseen puzzle configurations (generalization)
+• sample efficiency (performance with limited training data)
+• rule-trace fidelity (how well symbolic models match ground truth rules)
+• explanation quality (interpretability)
+• computational cost (inference time, parameters)
 
 Usage:
     python evaluate.py --data_dir ./data/raven_medium --models_dir ./saved_models
@@ -15,7 +24,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 from config import *
-from models import create_model, load_model
+from models import create_model, load_model, SymbolicReasoner, SymbolicTokenizer
+from models.encoder import RAVENFeatureExtractor
 from utils import create_dataloaders, ModelEvaluator
 
 
@@ -97,6 +107,106 @@ def visualize_prediction(
     return pred == target
 
 
+def evaluate_symbolic_reasoning(
+    encoder,
+    tokenizer,
+    symbolic_reasoner,
+    dataloader,
+    device,
+    max_samples: int = 100
+) -> dict:
+    """
+    Evaluate the symbolic rule-based reasoner.
+    Required by goal.md for rule-trace fidelity evaluation.
+    
+    Args:
+        encoder: Visual encoder to extract features
+        tokenizer: Symbolic tokenizer to extract attributes
+        symbolic_reasoner: Rule-based reasoning module
+        dataloader: Test data loader
+        device: Computation device
+        max_samples: Maximum samples to evaluate
+        
+    Returns:
+        Dictionary with symbolic reasoning evaluation results
+    """
+    from collections import defaultdict
+    
+    encoder.eval()
+    tokenizer = tokenizer.to(device)
+    tokenizer.eval()
+    
+    correct = 0
+    total = 0
+    rules_detected = defaultdict(int)
+    detailed_results = []
+    
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(dataloader):
+            if total >= max_samples:
+                break
+                
+            x, y, paths = batch
+            x, y = x.to(device), y.to(device)
+            batch_size = x.size(0)
+            
+            # Extract features
+            ctx_feat, choice_feat = encoder(x)
+            all_features = torch.cat([ctx_feat, choice_feat], dim=1)
+            
+            # Get symbolic attributes
+            symbolic_output = tokenizer.to_symbolic(all_features)
+            
+            for i in range(batch_size):
+                if total >= max_samples:
+                    break
+                
+                # Get attributes for this puzzle
+                puzzle_attrs = symbolic_output[i]
+                context_attrs = puzzle_attrs[:8]
+                choice_attrs = puzzle_attrs[8:]
+                
+                # Get symbolic prediction
+                pred, scores, explanation = symbolic_reasoner.predict(context_attrs, choice_attrs)
+                target = y[i].item()
+                
+                is_correct = pred == target
+                if is_correct:
+                    correct += 1
+                total += 1
+                
+                # Get full trace for rule analysis
+                full_trace = symbolic_reasoner.get_full_trace(context_attrs, choice_attrs)
+                
+                # Count detected rules
+                for attr, attr_data in full_trace['detected_rules'].items():
+                    for rule_info in attr_data.get('rules', []):
+                        rule_name = rule_info[0] if isinstance(rule_info, tuple) else str(rule_info)
+                        rules_detected[rule_name] += 1
+                
+                # Store detailed result (first 10 only)
+                if len(detailed_results) < 10:
+                    detailed_results.append({
+                        'path': paths[i] if isinstance(paths[i], str) else str(paths[i]),
+                        'predicted': pred,
+                        'target': target,
+                        'correct': is_correct,
+                        'scores': scores,
+                        'detected_rules': {
+                            attr: [r[0] for r in data.get('rules', [])]
+                            for attr, data in full_trace['detected_rules'].items()
+                        }
+                    })
+    
+    return {
+        'accuracy': correct / total if total > 0 else 0,
+        'correct': correct,
+        'total': total,
+        'rules_detected': dict(rules_detected),
+        'detailed_results': detailed_results
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description='Evaluate RAVEN models')
     parser.add_argument('--data_dir', type=str, default='./data/raven_medium',
@@ -174,6 +284,37 @@ def main():
         print(f"\n{name}:")
         for config, acc in sorted(config_acc.items()):
             print(f"  {config}: {acc:.4f}")
+    
+    # Rule-trace fidelity evaluation (required by goal.md)
+    print("\n" + "="*60)
+    print("RULE-TRACE FIDELITY: SYMBOLIC REASONING EVALUATION")
+    print("="*60)
+    
+    # Create symbolic reasoner and tokenizer for evaluation
+    symbolic_reasoner = SymbolicReasoner()
+    tokenizer = SymbolicTokenizer(feature_dim=FEATURE_DIM)
+    encoder = RAVENFeatureExtractor(pretrained=False).to(device)
+    
+    # Load encoder weights from first model
+    if models:
+        first_model = list(models.values())[0]
+        if hasattr(first_model, 'encoder'):
+            encoder.load_state_dict(first_model.encoder.state_dict())
+    
+    # Evaluate symbolic reasoner on a sample of test data
+    print("\nEvaluating symbolic rule-based reasoner...")
+    symbolic_results = evaluate_symbolic_reasoning(
+        encoder, tokenizer, symbolic_reasoner, test_dl, device, max_samples=100
+    )
+    
+    print(f"\nSymbolic Reasoner Results:")
+    print(f"  Prediction Accuracy: {symbolic_results['accuracy']:.4f}")
+    print(f"  Rules Detected Distribution:")
+    for rule, count in symbolic_results.get('rules_detected', {}).items():
+        print(f"    {rule}: {count}")
+    
+    # Save symbolic results
+    results['symbolic_reasoner'] = symbolic_results
     
     # Print comparison table
     print("\n" + "="*60)

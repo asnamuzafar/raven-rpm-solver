@@ -150,7 +150,18 @@ def train_model(
     print(f"Trainable parameters: {num_trainable:,} / {num_total:,} ({100*num_trainable/num_total:.1f}%)")
     
     optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=WEIGHT_DECAY)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    
+    # Warmup + Cosine decay scheduler for stable training
+    warmup_epochs = min(3, epochs // 5)  # 3 epochs warmup or 20% of total
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs  # Linear warmup
+        else:
+            # Cosine decay after warmup
+            progress = (epoch - warmup_epochs) / (epochs - warmup_epochs)
+            return 0.5 * (1 + np.cos(np.pi * progress))
+    
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     
     history = {

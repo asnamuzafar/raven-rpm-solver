@@ -1,13 +1,17 @@
 """
 Full RAVEN Model
 
-Combines the visual encoder with a reasoning module for end-to-end training.
+Combines all stages as per goal.md:
+- Stage A: Visual encoder (ResNet-18)
+- Stage B: Tokenizer (symbolic attribute extraction)
+- Stage C/D: Reasoning modules
 """
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 
 from .encoder import RAVENFeatureExtractor
+from .tokenizer import SymbolicTokenizer
 from .reasoner import TransformerReasoner, MLPRelationalReasoner
 from .baselines import CNNDirectBaseline, RelationNetwork, HybridReasoner
 
@@ -15,6 +19,7 @@ from .baselines import CNNDirectBaseline, RelationNetwork, HybridReasoner
 class FullRAVENModel(nn.Module):
     """
     Complete end-to-end model: Encoder + Reasoner
+    Implements Stages A + C/D from goal.md
     """
     def __init__(self, encoder: nn.Module, reasoner: nn.Module):
         super().__init__()
@@ -32,8 +37,110 @@ class FullRAVENModel(nn.Module):
         logits = self.reasoner(ctx_feat, choice_feat)
         return logits
     
-    def get_features(self, x: torch.Tensor) -> tuple:
+    def get_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Extract features without reasoning (useful for analysis)"""
+        return self.encoder(x)
+
+
+class FullRAVENModelWithTokenizer(nn.Module):
+    """
+    Complete model including Stage B tokenizer for symbolic extraction.
+    This model can:
+    1. Extract visual features (Stage A)
+    2. Convert to symbolic attributes (Stage B)
+    3. Perform reasoning (Stage C/D)
+    """
+    def __init__(
+        self, 
+        encoder: nn.Module, 
+        tokenizer: nn.Module,
+        reasoner: nn.Module,
+        use_symbolic: bool = False
+    ):
+        super().__init__()
+        self.encoder = encoder
+        self.tokenizer = tokenizer
+        self.reasoner = reasoner
+        self.use_symbolic = use_symbolic
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: (B, 16, H, W) - 16 panels per puzzle
+        Returns:
+            logits: (B, 8) - score for each choice
+        """
+        # Stage A: Visual encoding
+        ctx_feat, choice_feat = self.encoder(x)
+        
+        # Stage B: Tokenization (symbolic attributes)
+        # Concatenate features for tokenization
+        all_features = torch.cat([ctx_feat, choice_feat], dim=1)  # (B, 16, 512)
+        symbolic_attrs = self.tokenizer(all_features)  # dict of (B, 16, num_classes)
+        
+        # Stage C/D: Reasoning
+        if isinstance(self.reasoner, HybridReasoner) and self.use_symbolic:
+            # Hybrid model can use symbolic attributes
+            context_attrs, choice_attrs = self._convert_to_attr_lists(symbolic_attrs)
+            logits = self.reasoner(
+                ctx_feat, choice_feat,
+                context_attrs=context_attrs,
+                choice_attrs=choice_attrs
+            )
+        else:
+            logits = self.reasoner(ctx_feat, choice_feat)
+        
+        return logits
+    
+    def _convert_to_attr_lists(
+        self, 
+        symbolic_attrs: Dict[str, torch.Tensor]
+    ) -> Tuple[List[List[Dict]], List[List[Dict]]]:
+        """Convert symbolic attribute tensors to lists for symbolic reasoner."""
+        B = symbolic_attrs['shape'].shape[0]
+        
+        context_attrs = []
+        choice_attrs = []
+        
+        attr_names = {
+            'shape': self.tokenizer.shape_names,
+            'size': self.tokenizer.size_names,
+            'color': self.tokenizer.color_names,
+            'count': self.tokenizer.count_names,
+            'position': self.tokenizer.position_names
+        }
+        
+        for b in range(B):
+            ctx_list = []
+            ch_list = []
+            
+            for i in range(16):
+                attrs = {}
+                for attr, names in attr_names.items():
+                    idx = symbolic_attrs[attr][b, i].argmax().item()
+                    attrs[attr] = names[idx]
+                
+                if i < 8:
+                    ctx_list.append(attrs)
+                else:
+                    ch_list.append(attrs)
+            
+            context_attrs.append(ctx_list)
+            choice_attrs.append(ch_list)
+        
+        return context_attrs, choice_attrs
+    
+    def get_symbolic_representation(self, x: torch.Tensor) -> Dict[str, List]:
+        """
+        Get human-readable symbolic representation of all panels.
+        Useful for visualization and debugging.
+        """
+        ctx_feat, choice_feat = self.encoder(x)
+        all_features = torch.cat([ctx_feat, choice_feat], dim=1)
+        return self.tokenizer.to_symbolic(all_features)
+    
+    def get_features(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Extract features without reasoning"""
         return self.encoder(x)
 
 
@@ -46,7 +153,8 @@ def create_model(
     num_heads: int = 8,
     num_layers: int = 4,
     dropout: float = 0.1,
-) -> FullRAVENModel:
+    include_tokenizer: bool = False
+) -> nn.Module:
     """
     Factory function to create different model configurations.
     
@@ -59,14 +167,18 @@ def create_model(
         num_heads: Number of attention heads (for transformer)
         num_layers: Number of transformer layers
         dropout: Dropout rate
+        include_tokenizer: If True, return FullRAVENModelWithTokenizer
         
     Returns:
-        FullRAVENModel instance
+        FullRAVENModel or FullRAVENModelWithTokenizer instance
     """
-    # Create encoder (optionally frozen for small datasets)
+    # Stage A: Create encoder (optionally frozen for small datasets)
     encoder = RAVENFeatureExtractor(pretrained=pretrained_encoder, freeze=freeze_encoder)
     
-    # Create reasoner based on type
+    # Stage B: Create tokenizer (optional)
+    tokenizer = SymbolicTokenizer(feature_dim=feature_dim, hidden_dim=hidden_dim // 2) if include_tokenizer else None
+    
+    # Stage C/D: Create reasoner based on type
     if model_type == 'transformer':
         reasoner = TransformerReasoner(
             feature_dim=feature_dim,
@@ -98,14 +210,22 @@ def create_model(
     else:
         raise ValueError(f"Unknown model type: {model_type}")
     
+    # Return appropriate model class
+    if include_tokenizer and tokenizer is not None:
+        return FullRAVENModelWithTokenizer(
+            encoder, tokenizer, reasoner,
+            use_symbolic=(model_type == 'hybrid')
+        )
+    
     return FullRAVENModel(encoder, reasoner)
 
 
 def load_model(
     checkpoint_path: str,
     model_type: str = 'transformer',
-    device: str = 'cuda'
-) -> FullRAVENModel:
+    device: str = 'cuda',
+    include_tokenizer: bool = False
+) -> nn.Module:
     """
     Load a saved model from checkpoint.
     
@@ -113,6 +233,7 @@ def load_model(
         checkpoint_path: Path to .pth checkpoint file
         model_type: Type of model architecture
         device: Device to load model on
+        include_tokenizer: Whether to include tokenizer module
         
     Returns:
         Loaded model in eval mode
@@ -120,10 +241,13 @@ def load_model(
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
     # Recreate model architecture
-    model = create_model(model_type=model_type, pretrained_encoder=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model = create_model(
+        model_type=model_type, 
+        pretrained_encoder=False,
+        include_tokenizer=include_tokenizer
+    )
+    model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     model = model.to(device)
     model.eval()
     
     return model
-

@@ -5,7 +5,7 @@ from .encoder import ResNetVisualEncoder, RAVENFeatureExtractor
 from .tokenizer import SymbolicTokenizer, SymbolicEmbedding
 from .reasoner import TransformerReasoner, MLPRelationalReasoner, PositionalEncoding
 from .baselines import CNNDirectBaseline, RelationNetwork, SymbolicReasoner, HybridReasoner
-from .full_model import FullRAVENModel, create_model, load_model
+from .full_model import FullRAVENModel, FullRAVENModelWithTokenizer, create_model, load_model
 
 __all__ = [
     'ResNetVisualEncoder',
@@ -20,6 +20,7 @@ __all__ = [
     'SymbolicReasoner',
     'HybridReasoner',
     'FullRAVENModel',
+    'FullRAVENModelWithTokenizer',
     'create_model',
     'load_model',
 ]
