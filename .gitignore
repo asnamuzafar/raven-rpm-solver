@@ -1,0 +1,114 @@
+# ==============================================
+# RAVEN RPM Solver - Git Ignore
+# ==============================================
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===== Virtual Environments =====
+venv/
+env/
+ENV/
+.venv/
+.conda/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ===== Jupyter Notebooks =====
+.ipynb_checkpoints/
+*.ipynb
+
+# ===== Data =====
+data/
+*.npz
+*.npy
+
+# ===== RAVEN Dataset Generator =====
+RAVEN/
+RAVEN-master/
+
+# ===== Saved Models =====
+saved_models/
+*.pth
+*.pt
+*.ckpt
+*.h5
+
+# ===== Results =====
+results/
+*.csv
+*.json
+!requirements.txt
+
+# ===== Logs =====
+logs/
+*.log
+tensorboard/
+runs/
+
+# ===== Cache =====
+.cache/
+*.cache
+.pytest_cache/
+.mypy_cache/
+
+# ===== OS Files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ===== Temporary Files =====
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ===== Images (generated) =====
+*.png
+*.jpg
+*.jpeg
+*.gif
+!assets/*.png
+!assets/*.jpg
+
+# ===== Archives =====
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
