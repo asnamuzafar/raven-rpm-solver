@@ -19,9 +19,14 @@ from tqdm import tqdm
 from config import (
     BATCH_SIZE, EPOCHS, LEARNING_RATE, WEIGHT_DECAY, 
     SEED, DEVICE, NUM_WORKERS,
-    HIDDEN_DIM, NUM_HEADS, NUM_LAYERS, DROPOUT,
-    LABEL_SMOOTHING, FREEZE_ENCODER, PATIENCE
+    FEATURE_DIM, HIDDEN_DIM, NUM_HEADS, NUM_LAYERS, DROPOUT,
+    LABEL_SMOOTHING, FREEZE_ENCODER, PATIENCE, USE_SIMPLE_ENCODER
 )
+# Import encoder LR if available, otherwise use same as main LR
+try:
+    from config import ENCODER_LR
+except ImportError:
+    ENCODER_LR = LEARNING_RATE
 from models import create_model, FullRAVENModel
 from utils import create_dataloaders
 
@@ -143,7 +148,7 @@ def train_model(
     """Full training loop for a model with early stopping"""
     model = model.to(device)
     
-    # Only optimize parameters that require gradients (supports frozen encoder)
+    # Get all trainable parameters
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     num_trainable = sum(p.numel() for p in trainable_params)
     num_total = sum(p.numel() for p in model.parameters())
@@ -152,13 +157,13 @@ def train_model(
     optimizer = torch.optim.AdamW(trainable_params, lr=lr, weight_decay=WEIGHT_DECAY)
     
     # Warmup + Cosine decay scheduler for stable training
-    warmup_epochs = min(3, epochs // 5)  # 3 epochs warmup or 20% of total
+    warmup_epochs = min(3, epochs // 5)  # 3 epochs warmup
     def lr_lambda(epoch):
         if epoch < warmup_epochs:
             return (epoch + 1) / warmup_epochs  # Linear warmup
         else:
             # Cosine decay after warmup
-            progress = (epoch - warmup_epochs) / (epochs - warmup_epochs)
+            progress = (epoch - warmup_epochs) / max(1, epochs - warmup_epochs)
             return 0.5 * (1 + np.cos(np.pi * progress))
     
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -306,6 +311,8 @@ def main():
             model_type=model_type, 
             pretrained_encoder=True,
             freeze_encoder=args.freeze_encoder,
+            use_simple_encoder=USE_SIMPLE_ENCODER,
+            feature_dim=FEATURE_DIM,
             hidden_dim=HIDDEN_DIM,
             num_heads=NUM_HEADS,
             num_layers=NUM_LAYERS,

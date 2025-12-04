@@ -19,12 +19,12 @@ class RAVENAugmentation:
     the relational structure (only augments in ways that don't change the answer).
     """
     def __init__(self, 
-                 noise_prob: float = 0.3,
-                 noise_std: float = 0.05,
-                 brightness_prob: float = 0.3,
-                 brightness_range: Tuple[float, float] = (0.8, 1.2),
-                 contrast_prob: float = 0.3,
-                 contrast_range: Tuple[float, float] = (0.8, 1.2)):
+                 noise_prob: float = 0.5,
+                 noise_std: float = 0.1,
+                 brightness_prob: float = 0.5,
+                 brightness_range: Tuple[float, float] = (0.7, 1.3),
+                 contrast_prob: float = 0.5,
+                 contrast_range: Tuple[float, float] = (0.7, 1.3)):
         self.noise_prob = noise_prob
         self.noise_std = noise_std
         self.brightness_prob = brightness_prob

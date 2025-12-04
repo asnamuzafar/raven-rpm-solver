@@ -148,7 +148,8 @@ def create_model(
     model_type: str = 'transformer',
     pretrained_encoder: bool = True,
     freeze_encoder: bool = False,
-    feature_dim: int = 512,
+    use_simple_encoder: bool = True,
+    feature_dim: int = 256,
     hidden_dim: int = 512,
     num_heads: int = 8,
     num_layers: int = 4,
@@ -160,9 +161,10 @@ def create_model(
     
     Args:
         model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid'
-        pretrained_encoder: Whether to use pretrained ResNet weights
+        pretrained_encoder: Whether to use pretrained ResNet weights (only for ResNet encoder)
         freeze_encoder: Whether to freeze encoder weights (prevents overfitting)
-        feature_dim: Dimension of visual features (default 512 for ResNet-18)
+        use_simple_encoder: Use SimpleConvEncoder (better for RAVEN) vs ResNet
+        feature_dim: Dimension of visual features (256 for simple encoder, 512 for ResNet)
         hidden_dim: Hidden dimension for reasoning modules
         num_heads: Number of attention heads (for transformer)
         num_layers: Number of transformer layers
@@ -172,8 +174,14 @@ def create_model(
     Returns:
         FullRAVENModel or FullRAVENModelWithTokenizer instance
     """
-    # Stage A: Create encoder (optionally frozen for small datasets)
-    encoder = RAVENFeatureExtractor(pretrained=pretrained_encoder, freeze=freeze_encoder)
+    # Stage A: Create encoder
+    # Simple encoder works better for RAVEN abstract geometric puzzles
+    encoder = RAVENFeatureExtractor(
+        pretrained=pretrained_encoder, 
+        freeze=freeze_encoder,
+        use_simple_encoder=use_simple_encoder,
+        feature_dim=feature_dim
+    )
     
     # Stage B: Create tokenizer (optional)
     tokenizer = SymbolicTokenizer(feature_dim=feature_dim, hidden_dim=hidden_dim // 2) if include_tokenizer else None
@@ -184,7 +192,7 @@ def create_model(
             feature_dim=feature_dim,
             num_heads=num_heads,
             num_layers=num_layers,
-            hidden_dim=hidden_dim * 2,
+            hidden_dim=hidden_dim,
             dropout=dropout
         )
     elif model_type == 'mlp':

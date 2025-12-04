@@ -13,21 +13,23 @@ RESULTS_DIR = Path("./results")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ===== Model Architecture =====
-FEATURE_DIM = 512
-HIDDEN_DIM = 512   # Back to 512 for sufficient capacity
-NUM_HEADS = 8      # Back to 8 heads
-NUM_LAYERS = 3     # 3 layers (balanced)
-DROPOUT = 0.2      # Moderate dropout (0.4 was too high)
+FEATURE_DIM = 512  # ResNet-18 output dimension
+HIDDEN_DIM = 256   # Hidden dim for reasoning MLP
+NUM_HEADS = 8      # Unused (for API compatibility)
+NUM_LAYERS = 3     # Unused (for API compatibility)
+DROPOUT = 0.1      # Light dropout
 NUM_CHOICES = 8
+USE_SIMPLE_ENCODER = False  # Use pretrained ResNet encoder
 
 # ===== Training =====
-BATCH_SIZE = 64        # Larger batch on T4 GPU (faster)
-EPOCHS = 30       # More epochs with early stopping
-LEARNING_RATE = 3e-4   # Balanced LR (1e-4 too slow, 1e-3 too fast)
-WEIGHT_DECAY = 0.005   # Reduced weight decay for better learning
-LABEL_SMOOTHING = 0.05 # Reduced label smoothing 
-FREEZE_ENCODER = True  # IMPORTANT: Freeze encoder to focus learning on reasoner
-PATIENCE = 10          # More patience for learning
+BATCH_SIZE = 16         # Smaller batch for memory
+EPOCHS = 8              # Stop early to prevent overfitting (best val was around epoch 5-6)
+LEARNING_RATE = 1e-4    # This worked before
+ENCODER_LR = 1e-4       # Same as main (not used now)
+WEIGHT_DECAY = 1e-4     # Light regularization (original)
+LABEL_SMOOTHING = 0.0   # No label smoothing
+FREEZE_ENCODER = False  # Train encoder
+PATIENCE = 5            # Early stopping
 NUM_WORKERS = 2
 
 # ===== Dataset =====

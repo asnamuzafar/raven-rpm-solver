@@ -2,36 +2,28 @@
 Stage C: Deep Learning Reasoner (Primary Reasoning Engine)
 
 Analyzes relationships across all panels to infer visual rules.
-Implements Transformer-based and MLP-based relational reasoning.
+Uses contrastive relational reasoning - models DIFFERENCES between panels.
 """
 import torch
 import torch.nn as nn
 from typing import List, Optional
 
 
-class PositionalEncoding(nn.Module):
-    """Learnable positional encoding for panel positions in the 3x3 grid"""
-    def __init__(self, d_model: int, max_len: int = 16):
-        super().__init__()
-        self.pos_embed = nn.Embedding(max_len, d_model)
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, N, D = x.shape
-        positions = torch.arange(N, device=x.device).unsqueeze(0).expand(B, -1)
-        return x + self.pos_embed(positions)
-
-
 class TransformerReasoner(nn.Module):
     """
-    Transformer-based reasoning engine.
-    Uses self-attention to learn relationships between panels.
+    Simple Context-Choice Scorer for RAVEN puzzles.
+    
+    Key insight: Concatenate all context features with each choice,
+    and score how well the choice completes the pattern.
+    
+    This is simpler and more direct than complex relation networks.
     """
     def __init__(
         self, 
-        feature_dim: int = 512, 
-        num_heads: int = 8, 
-        num_layers: int = 4,
-        hidden_dim: int = 1024, 
+        feature_dim: int = 128, 
+        num_heads: int = 8,  # unused
+        num_layers: int = 3,  # unused
+        hidden_dim: int = 256, 
         dropout: float = 0.1, 
         num_choices: int = 8
     ):
@@ -40,36 +32,45 @@ class TransformerReasoner(nn.Module):
         self.feature_dim = feature_dim
         self.num_choices = num_choices
         
-        # Project features to model dimension
-        self.input_proj = nn.Linear(feature_dim, feature_dim)
-        
-        # Positional encoding
-        self.pos_encoding = PositionalEncoding(feature_dim, max_len=16)
-        
-        # Panel type embedding (context vs choice)
-        self.type_embed = nn.Embedding(2, feature_dim)  # 0=context, 1=choice
-        
-        # Transformer encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=feature_dim,
-            nhead=num_heads,
-            dim_feedforward=hidden_dim,
-            dropout=dropout,
-            activation='gelu',
-            batch_first=True
+        # Context encoder: processes all 8 context panels together
+        # 8 panels * feature_dim = input size
+        self.context_encoder = nn.Sequential(
+            nn.Linear(feature_dim * 8, hidden_dim * 2),
+            nn.LayerNorm(hidden_dim * 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(inplace=True),
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
-        # Output layers - score each choice
-        self.score_head = nn.Sequential(
+        # Choice encoder: processes each candidate answer
+        self.choice_encoder = nn.Sequential(
             nn.Linear(feature_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1)
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(inplace=True),
         )
         
-        # Layer norm
-        self.norm = nn.LayerNorm(feature_dim)
+        # Final scorer: compares encoded context with encoded choice
+        self.scorer = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim // 2, 1)
+        )
+        
+        self._init_weights()
+        
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.LayerNorm):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
         
     def forward(
         self, 
@@ -78,74 +79,41 @@ class TransformerReasoner(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            context_features: (B, 8, 512) - features for 8 context panels
-            choice_features: (B, 8, 512) - features for 8 choice panels
+            context_features: (B, 8, D) - features for 8 context panels
+            choice_features: (B, 8, D) - features for 8 choice panels
+            
         Returns:
             logits: (B, 8) - score for each choice
         """
         B = context_features.shape[0]
         
-        # Process each choice separately with context
+        # Flatten context: (B, 8, D) -> (B, 8*D)
+        context_flat = context_features.view(B, -1)
+        
+        # Encode context
+        context_encoded = self.context_encoder(context_flat)  # (B, hidden)
+        
+        # Score each choice
         scores = []
         for i in range(self.num_choices):
-            # Get the i-th choice for all batches
-            choice = choice_features[:, i:i+1, :]  # (B, 1, 512)
+            choice = choice_features[:, i]  # (B, D)
             
-            # Concatenate context + this choice
-            seq = torch.cat([context_features, choice], dim=1)  # (B, 9, 512)
+            # Encode choice
+            choice_encoded = self.choice_encoder(choice)  # (B, hidden)
             
-            # Project and add embeddings
-            seq = self.input_proj(seq)
-            seq = self.pos_encoding(seq)
+            # Combine context and choice
+            combined = torch.cat([context_encoded, choice_encoded], dim=-1)
             
-            # Add type embeddings
-            type_ids = torch.cat([
-                torch.zeros(B, 8, dtype=torch.long, device=seq.device),
-                torch.ones(B, 1, dtype=torch.long, device=seq.device)
-            ], dim=1)
-            seq = seq + self.type_embed(type_ids)
-            
-            # Apply transformer
-            seq = self.norm(seq)
-            seq = self.transformer(seq)  # (B, 9, 512)
-            
-            # Get score from the choice position (last token)
-            choice_repr = seq[:, -1, :]  # (B, 512)
-            score = self.score_head(choice_repr)  # (B, 1)
+            # Score
+            score = self.scorer(combined)  # (B, 1)
             scores.append(score)
         
-        # Stack scores
         logits = torch.cat(scores, dim=1)  # (B, 8)
         return logits
     
-    def get_attention_weights(
-        self, 
-        context_features: torch.Tensor, 
-        choice_features: torch.Tensor, 
-        choice_idx: int = 0
-    ) -> List[torch.Tensor]:
-        """Get attention weights for visualization"""
-        B = context_features.shape[0]
-        choice = choice_features[:, choice_idx:choice_idx+1, :]
-        seq = torch.cat([context_features, choice], dim=1)
-        seq = self.input_proj(seq)
-        seq = self.pos_encoding(seq)
-        
-        type_ids = torch.cat([
-            torch.zeros(B, 8, dtype=torch.long, device=seq.device),
-            torch.ones(B, 1, dtype=torch.long, device=seq.device)
-        ], dim=1)
-        seq = seq + self.type_embed(type_ids)
-        seq = self.norm(seq)
-        
-        # Get attention from each layer
-        attn_weights = []
-        for layer in self.transformer.layers:
-            attn_output, weights = layer.self_attn(seq, seq, seq, need_weights=True)
-            attn_weights.append(weights)
-            seq = layer(seq)
-        
-        return attn_weights
+    def get_attention_weights(self, context_features, choice_features, choice_idx=0):
+        """Dummy method for API compatibility"""
+        return []
 
 
 class MLPRelationalReasoner(nn.Module):

@@ -1,12 +1,97 @@
 """
 Stage A: Visual Encoder (Perception Layer)
 
-Processes the visual content of RPM puzzles using ResNet-18.
+Processes the visual content of RPM puzzles.
 Each image produces a 512-dimensional feature vector.
+
+Key insight: RAVEN puzzles have abstract geometric shapes - they need
+a simpler CNN trained from scratch, not ImageNet-pretrained features.
 """
 import torch
 import torch.nn as nn
 import torchvision.models as models
+
+
+class SimpleConvEncoder(nn.Module):
+    """
+    CNN encoder for RAVEN abstract geometric puzzles.
+    Designed to produce discriminative features for each panel.
+    
+    Key: Avoid BatchNorm which can cause feature collapse when processing
+    similar-looking images. Use GroupNorm instead.
+    """
+    def __init__(self, feature_dim: int = 128):
+        super().__init__()
+        
+        # Conv stack: 160x160 -> feature_dim
+        # Using GroupNorm instead of BatchNorm to preserve feature diversity
+        self.conv_layers = nn.Sequential(
+            # 160 -> 80
+            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(8, 32),
+            nn.ReLU(inplace=True),
+            
+            # 80 -> 40
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(8, 64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(8, 64),
+            nn.ReLU(inplace=True),
+            
+            # 40 -> 20
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(8, 128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.GroupNorm(8, 128),
+            nn.ReLU(inplace=True),
+            
+            # 20 -> 10
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(8, 256),
+            nn.ReLU(inplace=True),
+            
+            # 10 -> 5
+            nn.Conv2d(256, 256, kernel_size=3, stride=2, padding=1),
+            nn.GroupNorm(8, 256),
+            nn.ReLU(inplace=True),
+            
+            # Global average pool
+            nn.AdaptiveAvgPool2d(1)
+        )
+        
+        self.fc = nn.Sequential(
+            nn.Linear(256, feature_dim),
+            nn.ReLU(inplace=True),
+        )
+        self.feature_dim = feature_dim
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # Use larger initialization for better gradient flow
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, (nn.GroupNorm, nn.LayerNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+        
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv_layers(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
 
 
 class ResNetVisualEncoder(nn.Module):
@@ -69,9 +154,17 @@ class RAVENFeatureExtractor(nn.Module):
     """
     Full Stage A: Extract features from all 16 panels (8 context + 8 choices)
     """
-    def __init__(self, pretrained: bool = True, freeze: bool = False):
+    def __init__(self, pretrained: bool = True, freeze: bool = False, use_simple_encoder: bool = True, feature_dim: int = 256):
         super().__init__()
-        self.encoder = ResNetVisualEncoder(pretrained=pretrained)
+        
+        # Use simple encoder for RAVEN (abstract shapes) - trains from scratch
+        # ResNet pretrained on ImageNet doesn't work well for this domain
+        if use_simple_encoder:
+            self.encoder = SimpleConvEncoder(feature_dim=feature_dim)
+            print(f"Using SimpleConvEncoder (feature_dim={feature_dim})")
+        else:
+            self.encoder = ResNetVisualEncoder(pretrained=pretrained)
+            print(f"Using ResNetVisualEncoder (pretrained={pretrained})")
         
         # Freeze encoder weights to prevent overfitting on small datasets
         if freeze:
@@ -94,18 +187,18 @@ class RAVENFeatureExtractor(nn.Module):
         Args:
             x: (B, 16, H, W) - 16 panels per puzzle
         Returns:
-            context_features: (B, 8, 512) - features for context panels
-            choice_features: (B, 8, 512) - features for choice panels
+            context_features: (B, 8, feature_dim) - features for context panels
+            choice_features: (B, 8, feature_dim) - features for choice panels
         """
         B, N, H, W = x.shape
         
         # Reshape to process all panels at once
         x = x.view(B * N, 1, H, W)  # (B*16, 1, H, W)
-        features = self.encoder(x)  # (B*16, 512)
-        features = features.view(B, N, -1)  # (B, 16, 512)
+        features = self.encoder(x)  # (B*16, feature_dim)
+        features = features.view(B, N, -1)  # (B, 16, feature_dim)
         
-        context_features = features[:, :8, :]   # (B, 8, 512)
-        choice_features = features[:, 8:, :]    # (B, 8, 512)
+        context_features = features[:, :8, :]   # (B, 8, feature_dim)
+        choice_features = features[:, 8:, :]    # (B, 8, feature_dim)
         
         return context_features, choice_features
     
