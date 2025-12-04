@@ -14,20 +14,20 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ===== Model Architecture =====
 FEATURE_DIM = 512
-HIDDEN_DIM = 256  # Reduced from 512 to limit capacity
-NUM_HEADS = 4     # Reduced from 8
-NUM_LAYERS = 2    # Reduced from 4 to prevent overfitting
-DROPOUT = 0.4     # Increased from 0.1 for regularization
+HIDDEN_DIM = 512   # Back to 512 for sufficient capacity
+NUM_HEADS = 8      # Back to 8 heads
+NUM_LAYERS = 3     # 3 layers (balanced)
+DROPOUT = 0.2      # Moderate dropout (0.4 was too high)
 NUM_CHOICES = 8
 
 # ===== Training =====
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 EPOCHS = 30       # More epochs with early stopping
-LEARNING_RATE = 3e-4  # Slightly higher LR for faster convergence
-WEIGHT_DECAY = 0.05   # Increased from 0.01 for regularization
-LABEL_SMOOTHING = 0.1  # Prevent overconfident predictions
-FREEZE_ENCODER = True  # Freeze pretrained weights to prevent overfitting
-PATIENCE = 7           # Early stopping patience
+LEARNING_RATE = 1e-4   # Standard LR (3e-4 was too aggressive with regularization)
+WEIGHT_DECAY = 0.01    # Back to 0.01 (0.05 was too high)
+LABEL_SMOOTHING = 0.1  # Keep label smoothing
+FREEZE_ENCODER = True  # IMPORTANT: Freeze encoder to focus learning on reasoner
+PATIENCE = 10          # More patience for learning
 NUM_WORKERS = 2
 
 # ===== Dataset =====
