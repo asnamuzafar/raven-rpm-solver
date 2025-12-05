@@ -17,66 +17,7 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Dict, List
 
 
-class SupervisedAttributeHead(nn.Module):
-    """
-    Multi-task attribute prediction heads.
-    Uses ground-truth from I-RAVEN meta_matrix for supervision.
-    """
-    def __init__(self, feature_dim: int = 512, hidden_dim: int = 256):
-        super().__init__()
-        
-        # Shared processing for all attributes
-        self.shared = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-        )
-        
-        # Per-attribute prediction heads
-        # I-RAVEN attributes vary by configuration:
-        # center_single: Type(5), Size(6), Color(10)
-        # distribute_*: Number(9), Position(varies), Type(5), Size(6), Color(10)
-        
-        # We use a unified representation with max classes per attribute
-        self.type_head = nn.Linear(hidden_dim, 5)      # 5 shape types
-        self.size_head = nn.Linear(hidden_dim, 6)      # 6 size levels
-        self.color_head = nn.Linear(hidden_dim, 10)    # 10 color levels
-        self.number_head = nn.Linear(hidden_dim, 9)    # 1-9 objects
-        
-        self._init_weights()
-        
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-    
-    def forward(self, features: torch.Tensor) -> Dict[str, torch.Tensor]:
-        """
-        Args:
-            features: (B, N, D) where N is number of panels
-        Returns:
-            Dict of attribute logits, each (B, N, num_classes)
-        """
-        B, N, D = features.shape
-        features = features.reshape(B * N, D)  # Use reshape instead of view for non-contiguous
-        
-        shared = self.shared(features)  # (B*N, hidden)
-        
-        type_logits = self.type_head(shared).view(B, N, -1)
-        size_logits = self.size_head(shared).view(B, N, -1)
-        color_logits = self.color_head(shared).view(B, N, -1)
-        number_logits = self.number_head(shared).view(B, N, -1)
-        
-        return {
-            'type': type_logits,
-            'size': size_logits,
-            'color': color_logits,
-            'number': number_logits
-        }
-
+from .attributes import SupervisedAttributeHead
 
 class RulePredictor(nn.Module):
     """

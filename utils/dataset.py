@@ -209,7 +209,8 @@ def create_dataloaders(
     data_dir: Path,
     batch_size: int = 16,
     num_workers: int = 2,
-    pin_memory: bool = True
+    pin_memory: bool = True,
+    return_meta: bool = False
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create train/val/test DataLoaders.
@@ -219,6 +220,7 @@ def create_dataloaders(
         batch_size: Batch size
         num_workers: Number of data loading workers
         pin_memory: Whether to pin memory (useful for GPU)
+        return_meta: Whether to return metadata for supervised attribute prediction
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -226,30 +228,58 @@ def create_dataloaders(
     train_files, val_files, test_files = get_split_files(data_dir)
     
     # Enable augmentation for training set only
-    train_ds = RAVENDataset(train_files, augment=True)
-    val_ds = RAVENDataset(val_files, augment=False)
-    test_ds = RAVENDataset(test_files, augment=False)
+    train_ds = RAVENDataset(train_files, augment=True, return_meta=return_meta)
+    val_ds = RAVENDataset(val_files, augment=False, return_meta=return_meta)
+    test_ds = RAVENDataset(test_files, augment=False, return_meta=return_meta)
+    
+    def collate_fn(batch):
+        """Custom collate to handle metadata dict."""
+        if len(batch[0]) == 4:  # x, y, path, meta
+            x_list, y_list, path_list, meta_list = zip(*batch)
+            
+            x = torch.stack(x_list)
+            y = torch.stack(y_list)
+            
+            # Collate metadata
+            meta = {}
+            if meta_list[0]:
+                for key in meta_list[0].keys():
+                    if key == 'structure':
+                        meta[key] = [m[key] for m in meta_list]
+                    elif isinstance(meta_list[0][key], torch.Tensor):
+                        meta[key] = torch.stack([m[key] for m in meta_list])
+            
+            return x, y, path_list, meta
+        else:
+            x_list, y_list, path_list = zip(*batch)
+            return torch.stack(x_list), torch.stack(y_list), path_list
+            
+    # Use custom collate if returning metadata, otherwise default
+    collate_func = collate_fn if return_meta else None
     
     train_dl = DataLoader(
         train_ds, 
         batch_size=batch_size, 
         shuffle=True, 
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        collate_fn=collate_func
     )
     val_dl = DataLoader(
         val_ds, 
         batch_size=batch_size, 
         shuffle=False, 
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        collate_fn=collate_func
     )
     test_dl = DataLoader(
         test_ds, 
         batch_size=batch_size, 
         shuffle=False, 
         num_workers=num_workers,
-        pin_memory=pin_memory
+        pin_memory=pin_memory,
+        collate_fn=collate_func
     )
     
     print(f"Dataset splits: Train={len(train_files)}, Val={len(val_files)}, Test={len(test_files)}")

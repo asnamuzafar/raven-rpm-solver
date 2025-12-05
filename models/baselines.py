@@ -47,6 +47,8 @@ class CNNDirectBaseline(nn.Module):
         return self.classifier(all_features)  # (B, 8)
 
 
+from .attributes import SupervisedAttributeHead, compute_attribute_loss
+
 class RelationNetwork(nn.Module):
     """
     Relation Network for RAVEN: Vectorized, structure-aware implementation.
@@ -55,6 +57,7 @@ class RelationNetwork(nn.Module):
     1. Vectorized operations (no Python loops) - 10x faster
     2. Structure-aware: explicitly models row/column/diagonal relations
     3. Uses difference-based relations (captures transformations)
+    4. [NEW] Supervised attribute prediction (Shape, Color, Size, Number)
     """
     def __init__(
         self, 
@@ -66,6 +69,9 @@ class RelationNetwork(nn.Module):
         self.num_choices = num_choices
         self.feature_dim = feature_dim
         self.hidden_dim = hidden_dim
+        
+        # Supervised attribute extraction for auxiliary loss
+        self.attr_head = SupervisedAttributeHead(feature_dim, hidden_dim)
         
         # Row relation: learns patterns across each row (3 panels -> relation)
         self.row_relation = nn.Sequential(
@@ -117,11 +123,16 @@ class RelationNetwork(nn.Module):
             elif isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-        
+    
+    def get_attribute_loss(self, context_features: torch.Tensor, meta: Dict, device: str) -> torch.Tensor:
+        """Compute attribute supervision loss"""
+        return compute_attribute_loss(self.attr_head, context_features, meta, device)
+
     def forward(
         self, 
         context_features: torch.Tensor, 
-        choice_features: torch.Tensor
+        choice_features: torch.Tensor,
+        return_extras: bool = False
     ) -> torch.Tensor:
         """
         Vectorized forward pass - processes all choices in parallel.
@@ -129,6 +140,7 @@ class RelationNetwork(nn.Module):
         Args:
             context_features: (B, 8, D) - 8 context panels
             choice_features: (B, 8, D) - 8 candidate answers
+            return_extras: Whether to return auxiliary outputs (not used for now, but for consistency)
         Returns:
             logits: (B, 8) - score for each choice
         """
@@ -195,7 +207,12 @@ class RelationNetwork(nn.Module):
             score = self.aggregator(all_relations)  # (B, 1)
             scores.append(score)
         
-        return torch.cat(scores, dim=1)  # (B, 8)
+        logits = torch.cat(scores, dim=1)  # (B, 8)
+        
+        if return_extras:
+            return logits, {}
+            
+        return logits
 
 
 class SymbolicReasoner:

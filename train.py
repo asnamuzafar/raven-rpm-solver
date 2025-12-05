@@ -1,10 +1,23 @@
 """
-RAVEN RPM Solver - Training Script
+RAVEN RPM Solver - Main Training Script
 
-Train all reasoning models on the RAVEN dataset.
+Unified training script for all models. Supports:
+- Multiple reasoner architectures (Transformer, RelationNet, MLP, CNN-Direct)
+- Supervised attribute prediction (--use_attr flag)
+- I-RAVEN dataset (recommended for fair evaluation)
 
-Usage:
-    python train.py --data_dir ./data/raven_medium --epochs 30
+Usage Examples:
+    # Train RelationNet with attribute supervision (recommended)
+    python train.py --models relation_net --data_dir ./data/iraven_large --use_attr --epochs 15
+    
+    # Train multiple models
+    python train.py --models transformer relation_net --data_dir ./data/iraven_large --epochs 10
+    
+    # Quick test
+    python train.py --models relation_net --epochs 3 --batch_size 64
+
+Published SOTA on I-RAVEN: 92.9% (Raven Solver, 2023)
+Our best result: 32.9% (Neuro-Symbolic) / 28.0% (RelationNet with attributes)
 """
 import argparse
 import json
@@ -28,6 +41,7 @@ try:
 except ImportError:
     ENCODER_LR = LEARNING_RATE
 from models import create_model, FullRAVENModel
+from models.encoder import create_encoder
 from utils import create_dataloaders
 
 
@@ -64,12 +78,29 @@ def train_epoch(
     )
     
     for batch in pbar:
-        x, y, _ = batch
-        x, y = x.to(device), y.to(device)
+        optimizer.zero_grad()  # CRITICAL: Zero gradients before each iteration
         
-        optimizer.zero_grad()
-        logits = model(x)
-        loss = criterion(logits, y)
+        if len(batch) == 4 and hasattr(model, 'reasoner') and hasattr(model.reasoner, 'get_attribute_loss'):
+            # Batch with metadata for attribute supervision
+            x, y, _, meta = batch
+            x, y = x.to(device), y.to(device)
+            context_features, choice_features = model.encoder(x)
+            logits = model.reasoner(context_features, choice_features)
+            loss = criterion(logits, y)
+            
+            # Add attribute loss
+            attr_loss = model.reasoner.get_attribute_loss(context_features, meta, device)
+            loss = loss + 0.5 * attr_loss  # Hardcoded weight 0.5 for now
+        else:
+            # Standard batch
+            if len(batch) == 4:
+                x, y, _, _ = batch
+            else:
+                x, y, _ = batch
+            x, y = x.to(device), y.to(device)
+            logits = model(x)
+            loss = criterion(logits, y)
+            
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
@@ -112,7 +143,10 @@ def validate(
     
     with torch.no_grad():
         for batch in pbar:
-            x, y, _ = batch
+            if len(batch) == 4:
+                x, y, _, _ = batch
+            else:
+                x, y, _ = batch
             x, y = x.to(device), y.to(device)
             
             logits = model(x)
@@ -143,7 +177,8 @@ def train_model(
     model_name: str,
     save_dir: Path,
     label_smoothing: float = 0.0,
-    patience: int = 7
+    patience: int = 7,
+    use_attr: bool = False
 ) -> dict:
     """Full training loop for a model with early stopping"""
     model = model.to(device)
@@ -274,6 +309,11 @@ def main():
                         help='Label smoothing factor')
     parser.add_argument('--patience', type=int, default=PATIENCE,
                         help='Early stopping patience')
+    parser.add_argument('--use_attr', action='store_true',
+                        help='Enable supervised attribute prediction (for supported models)')
+    parser.add_argument('--encoder', type=str, default='resnet',
+                        choices=['resnet', 'efficientnet', 'dinov2', 'clip'],
+                        help='Encoder type: resnet (default), efficientnet, dinov2, or clip')
     args = parser.parse_args()
     
     # Setup
@@ -295,12 +335,14 @@ def main():
     print(f"Freeze encoder: {args.freeze_encoder}") 
     print(f"Label smoothing: {args.label_smoothing}")
     print(f"Early stopping patience: {args.patience}")
+    print(f"Encoder: {args.encoder}")
     
     # Create dataloaders
     train_dl, val_dl, test_dl = create_dataloaders(
         data_dir,
         batch_size=args.batch_size,
-        num_workers=NUM_WORKERS
+        num_workers=NUM_WORKERS,
+        return_meta=args.use_attr
     )
     
     # Train each model
@@ -317,17 +359,43 @@ def main():
     
     for model_type in args.models:
         name = model_names.get(model_type, model_type)
-        model = create_model(
-            model_type=model_type, 
-            pretrained_encoder=True,
-            freeze_encoder=args.freeze_encoder,
-            use_simple_encoder=USE_SIMPLE_ENCODER,
-            feature_dim=FEATURE_DIM,
-            hidden_dim=HIDDEN_DIM,
-            num_heads=NUM_HEADS,
-            num_layers=NUM_LAYERS,
-            dropout=DROPOUT
-        )
+        
+        # Create encoder based on --encoder argument
+        if args.encoder != 'resnet':
+            # Use pretrained encoder from pretrained_encoders.py
+            encoder = create_encoder(args.encoder, freeze=args.freeze_encoder)
+            encoder = encoder.to(device)
+            
+            # Import reasoner directly
+            from models.baselines import RelationNetwork, CNNDirectBaseline
+            from models.reasoner import TransformerReasoner, MLPRelationalReasoner
+            
+            if model_type == 'transformer':
+                reasoner = TransformerReasoner(feature_dim=512, num_heads=NUM_HEADS, 
+                                              num_layers=NUM_LAYERS, hidden_dim=HIDDEN_DIM, dropout=DROPOUT)
+            elif model_type == 'mlp':
+                reasoner = MLPRelationalReasoner(feature_dim=512, hidden_dim=HIDDEN_DIM)
+            elif model_type == 'relation_net':
+                reasoner = RelationNetwork(feature_dim=512, hidden_dim=HIDDEN_DIM // 2)
+            elif model_type == 'cnn_direct':
+                reasoner = CNNDirectBaseline(feature_dim=512, hidden_dim=HIDDEN_DIM)
+            else:
+                raise ValueError(f"Unknown model type: {model_type}")
+            
+            model = FullRAVENModel(encoder, reasoner)
+        else:
+            # Use default ResNet encoder via create_model
+            model = create_model(
+                model_type=model_type, 
+                pretrained_encoder=True,
+                freeze_encoder=args.freeze_encoder,
+                use_simple_encoder=USE_SIMPLE_ENCODER,
+                feature_dim=FEATURE_DIM,
+                hidden_dim=HIDDEN_DIM,
+                num_heads=NUM_HEADS,
+                num_layers=NUM_LAYERS,
+                dropout=DROPOUT
+            )
         
         history = train_model(
             model=model,
@@ -339,7 +407,8 @@ def main():
             model_name=name,
             save_dir=save_dir,
             label_smoothing=args.label_smoothing,
-            patience=args.patience
+            patience=args.patience,
+            use_attr=args.use_attr
         )
         
         all_histories[name] = history
