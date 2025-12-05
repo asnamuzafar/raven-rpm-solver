@@ -213,11 +213,11 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 8. **CNN-Direct (no relational reasoning)** - proves RPM requires relational reasoning
 
 ### Current Best Model:
-- **Architecture:** ResNet-18 (pretrained) + Transformer Reasoner
+- **Architecture:** ResNet-18 (pretrained) + RuleAwareReasoner (Neuro-Symbolic)
 - **Dataset:** I-RAVEN large (21,000 train samples)
-- **Train Accuracy:** 42.7%
-- **Val Accuracy:** 26.9% ✅
-- **Status:** Best validation accuracy achieved on I-RAVEN!
+- **Train Accuracy:** 44.0%
+- **Val Accuracy:** 32.9% ✅ NEW BEST
+- **Status:** 6% improvement over previous best (26.9%)!
 
 ---
 
@@ -252,13 +252,44 @@ python train_contrastive.py --data_dir ./data/iraven_large --epochs 15 --model c
 
 ---
 
+### 14. Neuro-Symbolic Reasoner with Supervised Attributes ✅ NEW BEST!
+**Config:**
+- ResNet-18 encoder (pretrained, unfrozen)
+- **New RuleAwareReasoner architecture**
+- **Supervised attribute extraction** from ground-truth `meta_matrix`
+- **Rule prediction heads** (Constant/Progression/Distribute/Arithmetic)
+- Multi-task loss: CE + 0.5 × Attribute Loss
+- Dataset: I-RAVEN large (21,000 train samples)
+- 15 epochs, `BATCH_SIZE = 32`, `LEARNING_RATE = 1e-4`
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| 1 | 16.3% | 19.4% | Fast initial learning |
+| 5 | 34.0% | 30.0% | Good progress |
+| 10 | 44.0% | **32.9%** ✅ | **Best** |
+| 15 | 48.8% | 32.4% | Slight overfit |
+
+**Key Findings:**
+- **32.9% validation accuracy** - beats previous best (26.9%) by **6%**!
+- Supervised attribute extraction provides strong learning signal
+- Rule prediction helps but overfitting still occurs after epoch 10
+- Train accuracy reaches 48.8% (much higher than baseline)
+
+**To Run:**
+```bash
+python train_neuro_symbolic.py --data_dir ./data/iraven_large --epochs 15 --model neuro_symbolic
+```
+
+---
+
 ## Recommended Next Steps
 
-1. **Run contrastive training** - `python train_contrastive.py --epochs 15`
-2. **Compare with baseline** - Should beat 26.9% significantly
-3. **Tune loss weights** - Adjust contrastive/ranking/consistency weights
-4. **Add multi-scale features** - If accuracy plateaus
-5. **Per-configuration analysis** - Check which puzzle types improve most
+1. **Try higher attribute loss weight** - `--lambda_attr 1.0` to reduce overfitting
+2. **Add data augmentation** - More aggressive augmentation
+3. **Ensemble with baseline** - Combine neuro-symbolic with transformer predictions
+4. **Per-configuration analysis** - Check which puzzle types improve most
+5. **Fine-tune rule prediction** - Add auxiliary rule loss
 
 ---
 

@@ -71,26 +71,29 @@ class RAVENDataset(Dataset):
     - 16 images: 8 context panels + 8 answer choices
     - 1 target: index of correct answer (0-7)
     """
-    def __init__(self, files: List[Path], transform=None, augment: bool = False):
+    def __init__(self, files: List[Path], transform=None, augment: bool = False, return_meta: bool = False):
         """
         Args:
             files: List of paths to .npz files
             transform: Optional transform to apply to images
             augment: Whether to apply data augmentation (for training)
+            return_meta: Whether to return ground-truth metadata for supervised learning
         """
         self.files = [str(f) for f in files]
         self.transform = transform
         self.augmentation = RAVENAugmentation() if augment else None
+        self.return_meta = return_meta
         
     def __len__(self) -> int:
         return len(self.files)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, str]:
+    def __getitem__(self, idx: int):
         """
         Returns:
             images: (16, 160, 160) float tensor normalized to [0, 1]
             target: scalar tensor with correct answer index
             path: path to the source file
+            meta (optional): dict with ground-truth attributes if return_meta=True
         """
         path = self.files[idx]
         data = np.load(path)
@@ -108,7 +111,62 @@ class RAVENDataset(Dataset):
         x = torch.from_numpy(imgs)
         y = torch.tensor(int(data["target"]), dtype=torch.long)
         
+        if self.return_meta:
+            # Load ground-truth metadata for supervised attribute extraction
+            meta = self._extract_meta(data)
+            return x, y, path, meta
+        
         return x, y, path
+    
+    def _extract_meta(self, data) -> dict:
+        """
+        Extract ground-truth attributes from I-RAVEN metadata.
+        
+        meta_matrix shape: (num_attributes, 9) for 9 panels in 3x3 grid
+        meta_target shape: (num_attributes,) for the correct answer panel
+        
+        I-RAVEN attributes (from Attribute.py):
+        - For single-object configs: Type, Size, Color (indices 0-2)
+        - For multi-object configs: Number, Position, Type, Size, Color
+        """
+        meta = {}
+        
+        if 'meta_matrix' in data.keys() and 'meta_target' in data.keys():
+            meta_matrix = data['meta_matrix']  # (num_attrs, 9)
+            meta_target = data['meta_target']  # (num_attrs,)
+            
+            # Build full 16-panel attribute matrix
+            # Context panels (0-7) correspond to positions 0-7 in meta_matrix
+            # But meta_matrix has 9 entries (3x3 grid), position 8 is the answer
+            
+            # Context panels: first 8 context positions (0-7)
+            # Note: In 3x3 grid, position 8 is bottom-right (the answer position)
+            # We need to map context panels to meta_matrix indices
+            
+            num_attrs = meta_matrix.shape[0]
+            
+            # Context: panels 0-7 (positions in 3x3 minus bottom-right)
+            # The 8 context panels map to: row0=[0,1,2], row1=[3,4,5], row2_partial=[6,7]
+            context_attrs = meta_matrix[:, :8]  # (num_attrs, 8)
+            
+            # For each choice, create the full attribute set
+            # Choice i has meta_target as the answer panel attributes
+            # But we also have access to predict array which has all 8 candidate predictions
+            
+            # Store context attributes
+            meta['context'] = torch.from_numpy(context_attrs.astype(np.int64))  # (num_attrs, 8)
+            
+            # The correct answer's attributes
+            meta['target_attrs'] = torch.from_numpy(meta_target.astype(np.int64))  # (num_attrs,)
+            
+            # Store raw meta_matrix for rule detection  
+            meta['meta_matrix'] = torch.from_numpy(meta_matrix.astype(np.int64))  # (num_attrs, 9)
+            
+        if 'structure' in data.keys():
+            # Structure encodes the configuration type
+            meta['structure'] = data['structure']
+            
+        return meta
 
 
 def get_split(path: Path) -> str:

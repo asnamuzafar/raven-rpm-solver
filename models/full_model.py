@@ -13,7 +13,7 @@ from typing import Optional, Dict, List, Tuple
 from .encoder import RAVENFeatureExtractor
 from .tokenizer import SymbolicTokenizer
 from .reasoner import TransformerReasoner, MLPRelationalReasoner
-from .reasoner_v2 import ContrastiveReasoner, DualContrastReasoner
+from .rule_reasoner import RuleAwareReasoner, NeuroSymbolicModel
 from .baselines import CNNDirectBaseline, RelationNetwork, HybridReasoner
 
 
@@ -161,7 +161,7 @@ def create_model(
     Factory function to create different model configurations.
     
     Args:
-        model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid', 'contrastive', 'dual_contrast'
+        model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid', 'neuro_symbolic'
         pretrained_encoder: Whether to use pretrained ResNet weights (only for ResNet encoder)
         freeze_encoder: Whether to freeze encoder weights (prevents overfitting)
         use_simple_encoder: Use SimpleConvEncoder (better for RAVEN) vs ResNet
@@ -216,17 +216,9 @@ def create_model(
             feature_dim=feature_dim,
             hidden_dim=hidden_dim // 2
         )
-    elif model_type == 'contrastive':
-        # New: Contrastive reasoner with multi-head comparison
-        reasoner = ContrastiveReasoner(
-            feature_dim=feature_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            dropout=dropout
-        )
-    elif model_type == 'dual_contrast':
-        # New: Dual-contrast reasoner (rule + choice contrast)
-        reasoner = DualContrastReasoner(
+    elif model_type == 'neuro_symbolic':
+        # SOTA-inspired: Rule-aware neuro-symbolic reasoner (BEST: 32.9%)
+        reasoner = RuleAwareReasoner(
             feature_dim=feature_dim,
             hidden_dim=hidden_dim,
             dropout=dropout
