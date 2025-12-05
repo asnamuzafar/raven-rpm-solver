@@ -7,11 +7,11 @@ from pathlib import Path
 # ===== Dataset Type =====
 # Options: "raven" or "iraven"
 # I-RAVEN is a bias-corrected version of RAVEN that prevents shortcut learning
-DATASET_TYPE = "raven"
+DATASET_TYPE = "iraven"
 
 # ===== Dataset Size =====
 # Options: "small", "medium", "large"
-DATASET_SIZE = "medium"
+DATASET_SIZE = "small"
 
 # ===== Paths =====
 DATA_DIR = Path(f"./data/{DATASET_TYPE}_{DATASET_SIZE}")  # Use medium dataset for better training
