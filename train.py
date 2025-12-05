@@ -264,7 +264,7 @@ def main():
     parser.add_argument('--lr', type=float, default=LEARNING_RATE,
                         help='Learning rate')
     parser.add_argument('--models', type=str, nargs='+',
-                        default=['transformer', 'mlp', 'cnn_direct', 'relation_net'],
+                        default=['transformer', 'mlp', 'relation_net', 'cnn_direct'],
                         help='Models to train')
     parser.add_argument('--seed', type=int, default=SEED,
                         help='Random seed')

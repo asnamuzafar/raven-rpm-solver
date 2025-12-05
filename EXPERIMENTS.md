@@ -135,7 +135,7 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 
 ---
 
-### 10. Structure-Aware RelationNet (raven_large) ✅ NEW BEST!
+### 10. Structure-Aware RelationNet (raven_large)
 **Config:**
 - ResNet-18 encoder (pretrained, unfrozen)
 - **New RelationNet architecture:** Row/Column/Diagonal relations
@@ -143,12 +143,50 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 - `LEARNING_RATE = 1e-4`
 - Dataset: **raven_large (21,000 train samples)**
 
-**Result:** ✅ BEST SO FAR!
+**Result:** ✅ WORKING
 - **Train Acc: 51.0%**
-- **Val Acc: 23.6%** ⬆️ NEW RECORD!
+- **Val Acc: 23.6%**
 - Best val_loss: 1.7292 (at epoch 5)
 - **Key insight:** Structure-aware design + larger dataset broke 20% barrier
-- Still overfitting but less severe than Transformer
+
+---
+
+### 11. I-RAVEN Medium Comparison (All Models)
+**Config:**
+- Dataset: **I-RAVEN medium (8,400 train samples)**
+- I-RAVEN fixes "shortcut" issues in original RAVEN
+- 5 epochs, all other settings same
+
+**Results:**
+| Model | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| MLP-Relational | 29.0% | **23.4%** | Best on medium |
+| RelationNet | 26.6% | 20.6% | Good |
+| Transformer | 28.8% | 19.8% | Good |
+| CNN-Direct | 12.9% | 13.2% | ❌ No learning (expected) |
+
+**Key insight:** I-RAVEN is easier to learn than RAVEN with same data size!
+
+---
+
+### 12. I-RAVEN Large (All Models) ✅ NEW BEST!
+**Config:**
+- Dataset: **I-RAVEN large (21,000 train samples)**
+- 10 epochs, `BATCH_SIZE = 32`, `LEARNING_RATE = 1e-4`
+
+**Results:**
+| Model | Train Acc | Val Acc | Best Val Loss |
+|-------|-----------|---------|---------------|
+| **Transformer** | 42.7% | **26.9%** ✅ | 1.5911 |
+| RelationNet | 44.0% | 26.2% | 1.6000 |
+| MLP-Relational | 46.4% | 25.8% | 1.5990 |
+| CNN-Direct | 13.1% | 11.4% | ❌ No learning |
+
+**Key findings:**
+- **Transformer wins on I-RAVEN large!** (26.9%)
+- All relational models perform similarly (~26%)
+- CNN-Direct confirms relational reasoning is required
+- Val accuracy peaked around epoch 7-9, then declined (overfitting)
 
 ---
 
@@ -161,7 +199,8 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 4. **No label smoothing** - allows sharper predictions
 5. **Light dropout (0.1)** - any more prevents learning
 6. **Structure-aware reasoning** - Modeling rows/columns/diagonals explicitly helps!
-7. **More training data** - raven_large (21k) significantly better than raven_medium (8.4k)
+7. **More training data** - large (21k) significantly better than medium (8.4k)
+8. **I-RAVEN over RAVEN** - I-RAVEN is fairer and models learn better on it
 
 ### What DOESN'T WORK:
 1. **Training CNN from scratch** - features collapse to near-identical
@@ -171,25 +210,24 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 5. **High dropout (0.3+)** - prevents learning entirely
 6. **Large batch sizes (256)** - not enough gradient updates
 7. **Naive pairwise relations** - All-pairs RN is slow and loses grid structure
+8. **CNN-Direct (no relational reasoning)** - proves RPM requires relational reasoning
 
 ### Current Best Model:
-- **Architecture:** ResNet-18 (pretrained) + Structure-Aware RelationNet
-- **Dataset:** raven_large (21,000 train samples)
-- **Train Accuracy:** 51.0%
-- **Val Accuracy:** 23.6% ✅
-- **Status:** Best validation accuracy achieved!
+- **Architecture:** ResNet-18 (pretrained) + Transformer Reasoner
+- **Dataset:** I-RAVEN large (21,000 train samples)
+- **Train Accuracy:** 42.7%
+- **Val Accuracy:** 26.9% ✅
+- **Status:** Best validation accuracy achieved on I-RAVEN!
 
 ---
 
 ## Recommended Next Steps
 
-1. **Early stopping** - Best val was at epoch 5-6, consider stopping earlier
-2. **More regularization** - Try stronger dropout or weight decay to reduce overfitting
-3. **Hybrid approach** - Combine RelationNet with symbolic reasoning
-4. **Try different architectures:**
-   - Wild Relation Network (WReN)
-   - CoPINet style contrastive learning
-   - Multi-scale reasoning
+1. **More epochs with early stopping** - Val peaked around epoch 7-9
+2. **Reduce overfitting** - Try stronger regularization (dropout, weight decay)
+3. **Hybrid approach** - Combine deep learning with symbolic reasoning
+4. **Ensemble models** - Combine Transformer + RelationNet + MLP predictions
+5. **Per-configuration analysis** - Check which puzzle types are hardest
 
 ---
 
@@ -200,16 +238,20 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 - Modified first conv for grayscale input
 - Output: 512-dim features per panel
 
-### Best Reasoner (Structure-Aware RelationNet):
+### Best Reasoner (Transformer/Context-Choice Scorer):
 ```
-Row Relations:    Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×3 rows)
-Column Relations: Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×3 cols)
-Diagonal Relations: Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×2 diags)
-Aggregator: Linear(256*8 → 512) → LayerNorm → ReLU → Dropout → Linear(512 → 256) → ReLU → Linear(256 → 1)
+Context Encoder: Linear(512*8 → 512) → LayerNorm → ReLU → Linear(512 → 256)
+Choice Encoder: Linear(512 → 256) → LayerNorm → ReLU
+Scorer: Linear(512 → 256) → ReLU → Dropout → Linear(256 → 128) → ReLU → Linear(128 → 1)
 ```
 
-### Data (raven_large):
+### Alternative Reasoners:
+- **RelationNet:** Row/Column/Diagonal relations → Aggregator → Score (26.2%)
+- **MLP-Relational:** Row/Column MLPs → Combine → Score (25.8%)
+
+### Data (I-RAVEN large):
 - 21,000 train, 7,000 val, 7,000 test samples
 - 16 images per puzzle (8 context + 8 choices)
 - 160x160 grayscale images
+- 7 puzzle configurations (center_single, left_right, up_down, etc.)
 

@@ -11,7 +11,7 @@ DATASET_TYPE = "iraven"
 
 # ===== Dataset Size =====
 # Options: "small", "medium", "large"
-DATASET_SIZE = "small"
+DATASET_SIZE = "large"
 
 # ===== Paths =====
 DATA_DIR = Path(f"./data/{DATASET_TYPE}_{DATASET_SIZE}")  # Use medium dataset for better training
