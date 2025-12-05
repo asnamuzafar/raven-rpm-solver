@@ -47,8 +47,6 @@ class CNNDirectBaseline(nn.Module):
         return self.classifier(all_features)  # (B, 8)
 
 
-from .attributes import SupervisedAttributeHead, compute_attribute_loss
-
 class RelationNetwork(nn.Module):
     """
     Relation Network for RAVEN: Vectorized, structure-aware implementation.
@@ -69,9 +67,6 @@ class RelationNetwork(nn.Module):
         self.num_choices = num_choices
         self.feature_dim = feature_dim
         self.hidden_dim = hidden_dim
-        
-        # Supervised attribute extraction for auxiliary loss
-        self.attr_head = SupervisedAttributeHead(feature_dim, hidden_dim)
         
         # Row relation: learns patterns across each row (3 panels -> relation)
         self.row_relation = nn.Sequential(
@@ -124,9 +119,6 @@ class RelationNetwork(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
     
-    def get_attribute_loss(self, context_features: torch.Tensor, meta: Dict, device: str) -> torch.Tensor:
-        """Compute attribute supervision loss"""
-        return compute_attribute_loss(self.attr_head, context_features, meta, device)
 
     def forward(
         self, 

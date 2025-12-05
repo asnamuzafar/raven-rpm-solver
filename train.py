@@ -78,28 +78,16 @@ def train_epoch(
     )
     
     for batch in pbar:
-        optimizer.zero_grad()  # CRITICAL: Zero gradients before each iteration
+        optimizer.zero_grad()
         
-        if len(batch) == 4 and hasattr(model, 'reasoner') and hasattr(model.reasoner, 'get_attribute_loss'):
-            # Batch with metadata for attribute supervision
-            x, y, _, meta = batch
-            x, y = x.to(device), y.to(device)
-            context_features, choice_features = model.encoder(x)
-            logits = model.reasoner(context_features, choice_features)
-            loss = criterion(logits, y)
-            
-            # Add attribute loss
-            attr_loss = model.reasoner.get_attribute_loss(context_features, meta, device)
-            loss = loss + 0.5 * attr_loss  # Hardcoded weight 0.5 for now
+        # Handle different batch formats
+        if len(batch) == 4:
+            x, y, _, _ = batch
         else:
-            # Standard batch
-            if len(batch) == 4:
-                x, y, _, _ = batch
-            else:
-                x, y, _ = batch
-            x, y = x.to(device), y.to(device)
-            logits = model(x)
-            loss = criterion(logits, y)
+            x, y, _ = batch
+        x, y = x.to(device), y.to(device)
+        logits = model(x)
+        loss = criterion(logits, y)
             
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -309,8 +297,6 @@ def main():
                         help='Label smoothing factor')
     parser.add_argument('--patience', type=int, default=PATIENCE,
                         help='Early stopping patience')
-    parser.add_argument('--use_attr', action='store_true',
-                        help='Enable supervised attribute prediction (for supported models)')
     parser.add_argument('--encoder', type=str, default='resnet',
                         choices=['resnet', 'efficientnet', 'dinov2', 'clip'],
                         help='Encoder type: resnet (default), efficientnet, dinov2, or clip')
@@ -341,8 +327,7 @@ def main():
     train_dl, val_dl, test_dl = create_dataloaders(
         data_dir,
         batch_size=args.batch_size,
-        num_workers=NUM_WORKERS,
-        return_meta=args.use_attr
+        num_workers=NUM_WORKERS
     )
     
     # Train each model

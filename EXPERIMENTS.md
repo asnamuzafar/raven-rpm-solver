@@ -12,9 +12,9 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 | Model | Val Accuracy | Notes |
 |-------|--------------|-------|
 | **Neuro-Symbolic (RuleAwareReasoner)** | **32.9%** | Best overall |
-| RelationNet + Attribute Supervision | 28.0% | Improved baseline |
+| RelationNet | 26.2% | Structure-aware |
 | Transformer | 26.9% | Competitive |
-| EfficientNet Encoder | 21.1% | Alternative encoder test |
+| EfficientNet Encoder | 21.1% | Alternative encoder |
 | DINOv2 Encoder | 13.7% | Did not converge |
 
 ---
@@ -63,41 +63,17 @@ python train_neuro_symbolic.py --data_dir ./data/iraven_large --epochs 15
 
 ---
 
-### Experiment 5: RelationNet with Attribute Supervision
-**Config:**
-- RelationNet + SupervisedAttributeHead (shared module)
-- Multi-task loss: CrossEntropy + 0.5 × Attribute Loss
-- Added `--use_attr` flag to train.py
-
-**Results:**
-| LR | Epochs | Val Acc |
-|----|--------|---------|
-| 1e-4 | 15 | 27.7% |
-| 3e-3 | 5 | **28.0%** ✅ |
-
-**Command:**
-```bash
-python train.py --models relation_net --data_dir ./data/iraven_large --use_attr --epochs 15
-```
-
----
-
-### Experiment 6: Pretrained Vision Encoders
-**Goal:** Test alternative pretrained encoders (EfficientNet, DINOv2) vs ResNet-18
+### Experiment 5: Pretrained Vision Encoders
+**Goal:** Test alternative pretrained encoders vs ResNet-18
 
 **Results:**
 | Encoder | Val Acc (5 epochs) | Params | Notes |
 |---------|-------------------|--------|-------|
-| EfficientNet-B0 | 21.1% | 4.6M | Fast, comparable |
+| ResNet-18 | 26-27% | 11M | **Best encoder** |
+| EfficientNet-B0 | 21.1% | 4.6M | Fast but lower accuracy |
 | DINOv2-ViT-S | 13.7% (stuck) | 22M | Failed to converge |
-| ResNet-18 (baseline) | 27-28% | 11M | Best encoder |
 
-**Finding:** ResNet-18 remains the best encoder for RAVEN-style puzzles. DINOv2's self-supervised features don't transfer well to abstract shapes.
-
-**Command:**
-```bash
-python train_pretrained.py --encoder efficientnet --epochs 10
-```
+**Finding:** ResNet-18 remains the best encoder. Self-supervised features (DINOv2) don't transfer well to abstract shapes.
 
 ---
 
@@ -106,16 +82,16 @@ python train_pretrained.py --encoder efficientnet --epochs 10
 ### What Works:
 1. **Pretrained ResNet-18 encoder** - Best feature extractor for RAVEN
 2. **End-to-end training** - Fine-tuning encoder is essential
-3. **Supervised attribute extraction** - Ground-truth attributes improve learning
-4. **Structure-aware reasoning** - Explicit row/column/diagonal modeling helps
-5. **I-RAVEN over RAVEN** - I-RAVEN fixes distribution biases
+3. **Neuro-Symbolic approach** - Rule prediction + attribute extraction (32.9%)
+4. **Structure-aware reasoning** - Explicit row/column/diagonal modeling
+5. **I-RAVEN over RAVEN** - Fixes distribution biases
 6. **More training data** - 21k samples significantly better than 8.4k
 
 ### What Doesn't Work:
 1. **Frozen encoders** - Features not discriminative enough
-2. **DINOv2/CLIP** - Self-supervised features don't transfer to abstract reasoning
+2. **DINOv2/CLIP/EfficientNet** - Don't outperform ResNet-18
 3. **High dropout (>0.3)** - Prevents learning
-4. **Training from scratch** - Feature collapse with BatchNorm
+4. **Training CNN from scratch** - Feature collapse
 
 ---
 
@@ -125,8 +101,8 @@ python train_pretrained.py --encoder efficientnet --epochs 10
 |--------|----------|----------------|
 | I-RAVEN Accuracy | 32.9% | 92.9% |
 
-The significant gap (~60%) indicates that our architecture lacks the sophisticated reasoning capabilities of SOTA methods like the "Raven Solver" which uses:
-- Perception-to-reasoning pipeline
+The ~60% gap indicates SOTA methods use more sophisticated approaches:
+- Perception-to-reasoning pipelines
 - Rule-based symbolic reasoning
 - Answer set programming
 
@@ -135,14 +111,13 @@ The significant gap (~60%) indicates that our architecture lacks the sophisticat
 ## Code Structure
 
 ```
-train.py                    # Main training script (supports --use_attr)
-train_neuro_symbolic.py     # Neuro-symbolic model training
-train_pretrained.py         # Pretrained encoder comparison
+train.py                    # Main training script
+train_neuro_symbolic.py     # Neuro-symbolic model (best: 32.9%)
 models/
-  attributes.py             # Shared SupervisedAttributeHead
-  pretrained_encoders.py    # CLIP, DINOv2, EfficientNet encoders
-  rule_reasoner.py          # RuleAwareReasoner
-  baselines.py              # RelationNet (with attribute support)
+  encoder.py                # All encoders (ResNet, EfficientNet, DINOv2, CLIP)
+  baselines.py              # RelationNet, CNNDirect, HybridReasoner
+  reasoner.py               # Transformer, MLP reasoners
+  rule_reasoner.py          # RuleAwareReasoner (neuro-symbolic)
 ```
 
 ---
@@ -150,12 +125,14 @@ models/
 ## Recommended Commands
 
 ```bash
-# Best model (Neuro-Symbolic)
+# Best model (Neuro-Symbolic) - 32.9% accuracy
 python train_neuro_symbolic.py --data_dir ./data/iraven_large --epochs 15
 
-# RelationNet with attribute supervision
-python train.py --models relation_net --data_dir ./data/iraven_large --use_attr --epochs 15
+# Standard models
+python train.py --models relation_net --data_dir ./data/iraven_large --epochs 10
+python train.py --models transformer --data_dir ./data/iraven_large --epochs 10
 
 # Test different encoders
-python train_pretrained.py --encoder efficientnet --epochs 10
+python train.py --encoder efficientnet --models relation_net --epochs 10
+python train.py --encoder dinov2 --models relation_net --epochs 5
 ```

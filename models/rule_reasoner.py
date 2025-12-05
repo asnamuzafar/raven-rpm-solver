@@ -17,7 +17,32 @@ import torch.nn.functional as F
 from typing import Optional, Tuple, Dict, List
 
 
-from .attributes import SupervisedAttributeHead
+class SupervisedAttributeHead(nn.Module):
+    """
+    Multi-task classification head for supervised attribute extraction.
+    Predicts: Type (5), Size (6), Color (10), Number (9)
+    """
+    def __init__(self, feature_dim: int = 512, hidden_dim: int = 256):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(feature_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+        )
+        self.type_head = nn.Linear(hidden_dim, 5)
+        self.size_head = nn.Linear(hidden_dim, 6)
+        self.color_head = nn.Linear(hidden_dim, 10)
+        self.number_head = nn.Linear(hidden_dim, 9)
+        
+    def forward(self, features: torch.Tensor) -> Dict[str, torch.Tensor]:
+        shared = self.shared(features)
+        return {
+            'type': self.type_head(shared),
+            'size': self.size_head(shared),
+            'color': self.color_head(shared),
+            'number': self.number_head(shared)
+        }
 
 class RulePredictor(nn.Module):
     """
