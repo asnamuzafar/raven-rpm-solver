@@ -250,8 +250,11 @@ def train_model(
 
 def main():
     parser = argparse.ArgumentParser(description='Train RAVEN models')
-    parser.add_argument('--data_dir', type=str, default='./data/raven_medium',
-                        help='Path to RAVEN data directory')
+    parser.add_argument('--dataset', type=str, default='raven',
+                        choices=['raven', 'iraven'],
+                        help='Dataset type: raven (original) or iraven (bias-corrected)')
+    parser.add_argument('--data_dir', type=str, default=None,
+                        help='Path to data directory (overrides --dataset if provided)')
     parser.add_argument('--save_dir', type=str, default='./saved_models',
                         help='Directory to save models')
     parser.add_argument('--epochs', type=int, default=EPOCHS,
@@ -279,16 +282,23 @@ def main():
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
+    # Determine data directory
+    if args.data_dir:
+        data_dir = args.data_dir
+    else:
+        data_dir = f'./data/{args.dataset}_medium'
+    
     print(f"Device: {device}")
-    print(f"Data directory: {args.data_dir}")
+    print(f"Dataset type: {args.dataset}")
+    print(f"Data directory: {data_dir}")
     print(f"Save directory: {save_dir}")
-    print(f"Freeze encoder: {args.freeze_encoder}")
+    print(f"Freeze encoder: {args.freeze_encoder}") 
     print(f"Label smoothing: {args.label_smoothing}")
     print(f"Early stopping patience: {args.patience}")
     
     # Create dataloaders
     train_dl, val_dl, test_dl = create_dataloaders(
-        args.data_dir,
+        data_dir,
         batch_size=args.batch_size,
         num_workers=NUM_WORKERS
     )

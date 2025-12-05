@@ -56,6 +56,10 @@ data/
 RAVEN/
 RAVEN-master/
 
+# ===== I-RAVEN Dataset Generator =====
+I-RAVEN/
+I-RAVEN-master/
+
 # ===== Saved Models =====
 saved_models/
 *.pth

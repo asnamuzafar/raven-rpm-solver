@@ -37,25 +37,34 @@ try:
 except Exception as e:
     print(f"✗ Model test failed: {e}")
 
-# Check for data (supports small, medium, large datasets)
+# Check for data (supports RAVEN and I-RAVEN datasets)
 from pathlib import Path
 data_dirs = [
+    # RAVEN datasets
     Path("./data/raven_medium"),
     Path("./data/raven_small"),
     Path("./data/raven_large"),
+    # I-RAVEN datasets (bias-corrected)
+    Path("./data/iraven_medium"),
+    Path("./data/iraven_small"),
+    Path("./data/iraven_large"),
+    # Colab paths
     Path("/content/drive/MyDrive/raven_medium"),
     Path("/content/drive/MyDrive/raven_small"),
+    Path("/content/drive/MyDrive/iraven_medium"),
 ]
 data_found = False
 for d in data_dirs:
     if d.exists():
         npz_count = len(list(d.rglob("*.npz")))
         if npz_count > 0:
-            print(f"✓ Data found: {d} ({npz_count} files)")
+            dataset_type = "I-RAVEN" if "iraven" in str(d) else "RAVEN"
+            print(f"✓ {dataset_type} data found: {d} ({npz_count} files)")
             data_found = True
-            break
 if not data_found:
-    print("✗ No data found. Run ./setup.sh to generate dataset")
+    print("✗ No data found.")
+    print("  For RAVEN (original):       ./setup.sh")
+    print("  For I-RAVEN (bias-free):    ./setup_iraven.sh")
 
 print("\n" + "="*50)
 print("Setup test complete!")

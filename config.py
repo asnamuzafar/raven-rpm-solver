@@ -4,8 +4,17 @@ Configuration settings for RAVEN RPM Solver
 import torch
 from pathlib import Path
 
+# ===== Dataset Type =====
+# Options: "raven" or "iraven"
+# I-RAVEN is a bias-corrected version of RAVEN that prevents shortcut learning
+DATASET_TYPE = "raven"
+
+# ===== Dataset Size =====
+# Options: "small", "medium", "large"
+DATASET_SIZE = "medium"
+
 # ===== Paths =====
-DATA_DIR = Path("./data/raven_medium")  # Use medium dataset for better training
+DATA_DIR = Path(f"./data/{DATASET_TYPE}_{DATASET_SIZE}")  # Use medium dataset for better training
 MODELS_DIR = Path("./saved_models")
 RESULTS_DIR = Path("./results")
 

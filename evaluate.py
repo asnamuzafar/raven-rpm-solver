@@ -209,8 +209,11 @@ def evaluate_symbolic_reasoning(
 
 def main():
     parser = argparse.ArgumentParser(description='Evaluate RAVEN models')
-    parser.add_argument('--data_dir', type=str, default='./data/raven_medium',
-                        help='Path to RAVEN data directory')
+    parser.add_argument('--dataset', type=str, default='raven',
+                        choices=['raven', 'iraven'],
+                        help='Dataset type: raven (original) or iraven (bias-corrected)')
+    parser.add_argument('--data_dir', type=str, default=None,
+                        help='Path to data directory (overrides --dataset if provided)')
     parser.add_argument('--models_dir', type=str, default='./saved_models',
                         help='Directory containing trained models')
     parser.add_argument('--results_dir', type=str, default='./results',
@@ -224,13 +227,21 @@ def main():
     results_dir = Path(args.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
     
+    # Determine data directory
+    if args.data_dir:
+        data_dir = args.data_dir
+    else:
+        data_dir = f'./data/{args.dataset}_medium'
+    
     print(f"Device: {device}")
+    print(f"Dataset type: {args.dataset}")
+    print(f"Data directory: {data_dir}")
     print(f"Models directory: {models_dir}")
     print(f"Results directory: {results_dir}")
     
     # Create dataloaders
     train_dl, val_dl, test_dl = create_dataloaders(
-        args.data_dir,
+        data_dir,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS
     )
