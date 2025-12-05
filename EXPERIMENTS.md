@@ -104,7 +104,7 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 
 ---
 
-### 8. Stronger Data Augmentation + Light Dropout (Latest)
+### 8. Stronger Data Augmentation + Light Dropout
 **Config:**
 - `DROPOUT = 0.1` (reduced from 0.3)
 - `LEARNING_RATE = 1e-4`
@@ -116,7 +116,39 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 - **Train Acc: 27.2%** ⬆️
 - **Val Acc: 16.0%** ⬆️ (above random!)
 - Gap is smaller than experiment #4 (less overfitting)
-- **Status:** Promising, needs more epochs to see if val continues improving
+
+---
+
+### 9. Transformer Reasoner (15 epochs, raven_medium)
+**Config:**
+- ResNet-18 encoder (pretrained, unfrozen)
+- Transformer/Context-Choice Scorer reasoner
+- `BATCH_SIZE = 32`
+- `LEARNING_RATE = 1e-4`
+- Dataset: raven_medium (8400 train)
+
+**Result:** ✅ WORKING (matches exp #4)
+- **Train Acc: 68.6%**
+- **Val Acc: 18.4%** (best val_loss: 1.9508)
+- Val accuracy plateaued at ~18% after epoch 5
+- **Issue:** Severe overfitting, val loss increasing while train improves
+
+---
+
+### 10. Structure-Aware RelationNet (raven_large) ✅ NEW BEST!
+**Config:**
+- ResNet-18 encoder (pretrained, unfrozen)
+- **New RelationNet architecture:** Row/Column/Diagonal relations
+- `BATCH_SIZE = 32`
+- `LEARNING_RATE = 1e-4`
+- Dataset: **raven_large (21,000 train samples)**
+
+**Result:** ✅ BEST SO FAR!
+- **Train Acc: 51.0%**
+- **Val Acc: 23.6%** ⬆️ NEW RECORD!
+- Best val_loss: 1.7292 (at epoch 5)
+- **Key insight:** Structure-aware design + larger dataset broke 20% barrier
+- Still overfitting but less severe than Transformer
 
 ---
 
@@ -128,6 +160,8 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 3. **Low learning rate (1e-4)** - stable training
 4. **No label smoothing** - allows sharper predictions
 5. **Light dropout (0.1)** - any more prevents learning
+6. **Structure-aware reasoning** - Modeling rows/columns/diagonals explicitly helps!
+7. **More training data** - raven_large (21k) significantly better than raven_medium (8.4k)
 
 ### What DOESN'T WORK:
 1. **Training CNN from scratch** - features collapse to near-identical
@@ -136,24 +170,26 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 4. **Differential learning rates** - breaks training
 5. **High dropout (0.3+)** - prevents learning entirely
 6. **Large batch sizes (256)** - not enough gradient updates
+7. **Naive pairwise relations** - All-pairs RN is slow and loses grid structure
 
 ### Current Best Model:
-- **Architecture:** ResNet-18 (pretrained) + Simple Context-Choice Scorer
-- **Train Accuracy:** 78%
-- **Val Accuracy:** 18.2%
-- **Status:** Overfitting needs to be addressed
+- **Architecture:** ResNet-18 (pretrained) + Structure-Aware RelationNet
+- **Dataset:** raven_large (21,000 train samples)
+- **Train Accuracy:** 51.0%
+- **Val Accuracy:** 23.6% ✅
+- **Status:** Best validation accuracy achieved!
 
 ---
 
 ## Recommended Next Steps
 
-1. **Early stopping** - Stop training around epoch 5-6 when val accuracy peaks
-2. **Reduce encoder capacity** - Try ResNet-10 or smaller
-3. **More training data** - Use full RAVEN dataset instead of medium
-4. **Try different reasoner architectures:**
+1. **Early stopping** - Best val was at epoch 5-6, consider stopping earlier
+2. **More regularization** - Try stronger dropout or weight decay to reduce overfitting
+3. **Hybrid approach** - Combine RelationNet with symbolic reasoning
+4. **Try different architectures:**
    - Wild Relation Network (WReN)
    - CoPINet style contrastive learning
-   - Attention-based reasoner
+   - Multi-scale reasoning
 
 ---
 
@@ -164,15 +200,16 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 - Modified first conv for grayscale input
 - Output: 512-dim features per panel
 
-### Current Reasoner:
+### Best Reasoner (Structure-Aware RelationNet):
 ```
-Context Encoder: Linear(512*8 → 512) → LayerNorm → ReLU → Linear(512 → 256)
-Choice Encoder: Linear(512 → 256) → LayerNorm → ReLU
-Scorer: Linear(512 → 256) → ReLU → Dropout → Linear(256 → 128) → ReLU → Linear(128 → 1)
+Row Relations:    Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×3 rows)
+Column Relations: Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×3 cols)
+Diagonal Relations: Linear(512*3 → 256) → LayerNorm → ReLU → Linear(256 → 256) → ReLU  (×2 diags)
+Aggregator: Linear(256*8 → 512) → LayerNorm → ReLU → Dropout → Linear(512 → 256) → ReLU → Linear(256 → 1)
 ```
 
-### Data:
-- 8400 train, 2800 val, 2800 test samples
+### Data (raven_large):
+- 21,000 train, 7,000 val, 7,000 test samples
 - 16 images per puzzle (8 context + 8 choices)
 - 160x160 grayscale images
 
