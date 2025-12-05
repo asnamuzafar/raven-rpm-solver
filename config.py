@@ -10,7 +10,13 @@ MODELS_DIR = Path("./saved_models")
 RESULTS_DIR = Path("./results")
 
 # ===== Device =====
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Prefer MPS (Apple Silicon), then CUDA, then CPU
+if torch.backends.mps.is_available():
+    DEVICE = "mps"
+elif torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    DEVICE = "cpu"
 
 # ===== Model Architecture =====
 FEATURE_DIM = 512  # ResNet-18 output dimension
