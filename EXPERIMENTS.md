@@ -221,13 +221,44 @@ Training a deep learning model to solve RAVEN progressive matrix puzzles. The ta
 
 ---
 
+## New: Contrastive Learning Approach (Pending Training)
+
+### 13. ContrastiveReasoner with Multi-Loss Training
+**Config:**
+- ResNet-18 encoder (pretrained, unfrozen)
+- **New ContrastiveReasoner architecture**
+- **Combined loss:** CE + Contrastive + Ranking + Consistency
+- Dataset: I-RAVEN large (21,000 train samples)
+
+**New Components:**
+- `models/contrastive_losses.py` - Multiple loss functions
+- `models/reasoner_v2.py` - ContrastiveReasoner & DualContrastReasoner
+- `train_contrastive.py` - Multi-loss training script
+
+**Loss Components:**
+- **ContrastiveLoss (0.5)** - Pull correct answer close, push wrong answers away
+- **RankingLoss (0.3)** - Margin-based with hard negative mining
+- **ConsistencyLoss (0.2)** - Row/column/diagonal pattern consistency
+
+**Expected Results:**
+- Target Val Acc: 50-70%
+- Less overfitting due to contrastive regularization
+- Better discrimination between similar choices
+
+**To Run:**
+```bash
+python train_contrastive.py --data_dir ./data/iraven_large --epochs 15 --model contrastive
+```
+
+---
+
 ## Recommended Next Steps
 
-1. **More epochs with early stopping** - Val peaked around epoch 7-9
-2. **Reduce overfitting** - Try stronger regularization (dropout, weight decay)
-3. **Hybrid approach** - Combine deep learning with symbolic reasoning
-4. **Ensemble models** - Combine Transformer + RelationNet + MLP predictions
-5. **Per-configuration analysis** - Check which puzzle types are hardest
+1. **Run contrastive training** - `python train_contrastive.py --epochs 15`
+2. **Compare with baseline** - Should beat 26.9% significantly
+3. **Tune loss weights** - Adjust contrastive/ranking/consistency weights
+4. **Add multi-scale features** - If accuracy plateaus
+5. **Per-configuration analysis** - Check which puzzle types improve most
 
 ---
 

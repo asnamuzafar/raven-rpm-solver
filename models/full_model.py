@@ -13,6 +13,7 @@ from typing import Optional, Dict, List, Tuple
 from .encoder import RAVENFeatureExtractor
 from .tokenizer import SymbolicTokenizer
 from .reasoner import TransformerReasoner, MLPRelationalReasoner
+from .reasoner_v2 import ContrastiveReasoner, DualContrastReasoner
 from .baselines import CNNDirectBaseline, RelationNetwork, HybridReasoner
 
 
@@ -160,7 +161,7 @@ def create_model(
     Factory function to create different model configurations.
     
     Args:
-        model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid'
+        model_type: One of 'transformer', 'mlp', 'cnn_direct', 'relation_net', 'hybrid', 'contrastive', 'dual_contrast'
         pretrained_encoder: Whether to use pretrained ResNet weights (only for ResNet encoder)
         freeze_encoder: Whether to freeze encoder weights (prevents overfitting)
         use_simple_encoder: Use SimpleConvEncoder (better for RAVEN) vs ResNet
@@ -214,6 +215,21 @@ def create_model(
         reasoner = HybridReasoner(
             feature_dim=feature_dim,
             hidden_dim=hidden_dim // 2
+        )
+    elif model_type == 'contrastive':
+        # New: Contrastive reasoner with multi-head comparison
+        reasoner = ContrastiveReasoner(
+            feature_dim=feature_dim,
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout
+        )
+    elif model_type == 'dual_contrast':
+        # New: Dual-contrast reasoner (rule + choice contrast)
+        reasoner = DualContrastReasoner(
+            feature_dim=feature_dim,
+            hidden_dim=hidden_dim,
+            dropout=dropout
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}")
