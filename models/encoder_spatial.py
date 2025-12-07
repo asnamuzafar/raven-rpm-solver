@@ -12,7 +12,7 @@ Modifications from standard ResNet:
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 class SpatialResNet(nn.Module):
@@ -75,11 +75,12 @@ class SpatialFeatureExtractor(nn.Module):
     Includes a Spatial Adapter to compress 5x5 spatial features into a vector 
     while preserving positional information (unlike avgpool).
     """
-    def __init__(self, pretrained: bool = True, freeze: bool = False, feature_dim: int = 512):
+    def __init__(self, pretrained: bool = True, freeze: bool = False, feature_dim: int = 512, flatten_output: bool = True):
         super().__init__()
         self.encoder = SpatialResNet(pretrained=pretrained)
         self.out_channels = 512
         self.grid_size = 5
+        self.flatten_output = flatten_output
         
         # Spatial Adapter: Project (512, 5, 5) -> (512) vector
         # 1. Reduce channels 512 -> 64 to save parameters
@@ -96,13 +97,16 @@ class SpatialFeatureExtractor(nn.Module):
             for param in self.encoder.parameters():
                 param.requires_grad = False
                 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, flatten: Optional[bool] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Input: (B, 16, 160, 160) or (B, 16, 1, 160, 160)
         Output: 
-            context: (B, 8, feature_dim)
-            choices: (B, 8, feature_dim)
+            if flatten=True:  (B, 8, feature_dim)
+            if flatten=False: (B, 8, 512, 5, 5)
         """
+        if flatten is None:
+            flatten = self.flatten_output
+
         if x.dim() == 4:
             B, N, H, W = x.shape
             # Add channel dimension: (B*N, 1, H, W)
@@ -113,6 +117,11 @@ class SpatialFeatureExtractor(nn.Module):
         
         # Extract spatial features: (B*N, 512, 5, 5)
         features = self.encoder(x_flat) 
+        
+        if not flatten:
+            # Return raw spatial maps: (B, N, 512, 5, 5)
+            features = features.view(B, N, 512, 5, 5)
+            return features[:, :8], features[:, 8:]
         
         # Spatial Adapter
         x = self.compress_conv(features) # (B*N, 64, 5, 5)

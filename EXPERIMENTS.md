@@ -182,16 +182,43 @@ Adding contrastive loss improved convergence speed but did not beat the baseline
 
 ---
 
-### Experiment 11: SPATIAL REASONING (Dec 7, 2024) - RUNNING
+### Experiment 11: SPATIAL REASONING (Dec 7, 2024) - STOPPED
 **Config:**
 - Model: Neuro-Symbolic + SpatialResNet
 - Encoder: **Spatial ResNet (No Pooling, CoordConv)**
 - Loss: CrossEntropy + Contrastive (1.0) + Attribute (0.5)
 - Dataset: I-RAVEN large
 
-**Hypothesis:** By preserving the 5x5 feature grid and adding coordinate channels, the model will finally be able to solve "Position" rules, breaking the 33% ceiling.
+**Result:** Reached **23.3%** Val Acc at Epoch 10.
+**Analysis:** Learning was too slow compared to baseline (which hit 27% at Ep 5). The SpatialAdapter (training from scratch) needs stronger supervision than just the contrastive loss to learn position mapping quickly.
+
+### Experiment 12: SPATIAL + POSITION SUPERVISION (Dec 7, 2024) - FAILED
+**Config:**
+- Model: Neuro-Symbolic + SpatialResNet + **Position Head**
+- Encoder: Spatial ResNet (No Pooling, CoordConv)
+- Loss: CrossEntropy + Contrastive (1.0) + Attribute (1.0) incl. Position
+- Dataset: I-RAVEN large
+
+**Result:** Reached **27.1%** Val Acc.
+**Analysis:** Severe Overfitting! Train Acc reached **75.6%**. The explicit position supervision worked too well—the model memorized the absolute position of every object in the training set but failed to generalize the rules to new positions. The "Spatial Adapter" (flattening grid to vector) breaks translational invariance.
+
+### Experiment 13: SPATIAL CONVOLUTIONAL REASONER (Dec 7, 2024) - RUNNING
+**Config:**
+- Model: **Spatial Convolutional Reasoner** (Phase 5)
+- Encoder: Spatial ResNet (Flatten=False) -> (B, 512, 5, 5)
+- Reasoner: Conv2D over stacked panels (Translation Invariant)
+- Loss: CrossEntropy + Contrastive (1.0)
+- Dataset: I-RAVEN large
+
+**Hypothesis:** Replacing the flattening adapter with a Convolutional Reasoner will enforce translational invariance. The model will learn rules like "shift right" that apply anywhere, solving the generalization gap.
+
+**Status:** Epoch 3: **26.1%** Val (Train 26.0%). **NO OVERFITTING!**
+Compare to Exp 12: Ep 3 was 21.5%.
+This model is generalizing perfectly so far.
 
 ---
+
+
 
 ## Gap to SOTA
 

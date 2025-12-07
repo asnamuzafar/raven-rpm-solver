@@ -15,6 +15,8 @@ from .encoder_spatial import SpatialFeatureExtractor
 from .tokenizer import SymbolicTokenizer
 from .reasoner import TransformerReasoner, MLPRelationalReasoner
 from .rule_reasoner import RuleAwareReasoner, NeuroSymbolicModel
+from .rule_reasoner_pos import RuleAwareReasonerPos
+from .reasoner_spatial_conv import SpatialConvolutionalReasoner
 from .baselines import CNNDirectBaseline, RelationNetwork, HybridReasoner
 
 
@@ -183,7 +185,8 @@ def create_model(
         encoder = SpatialFeatureExtractor(
             pretrained=pretrained_encoder,
             freeze=freeze_encoder,
-            feature_dim=feature_dim
+            feature_dim=feature_dim,
+            flatten_output=(model_type != 'spatial_conv') # Don't flatten for Conv Reasoner
         )
     else:
         # Backward compatibility for use_simple_encoder flag
@@ -234,6 +237,19 @@ def create_model(
             feature_dim=feature_dim,
             hidden_dim=hidden_dim,
             dropout=dropout
+        )
+    elif model_type == 'neuro_symbolic_pos':
+        # Enhanced reasoner with Position supervision (Phase 4)
+        reasoner = RuleAwareReasonerPos(
+            feature_dim=feature_dim,
+            hidden_dim=hidden_dim,
+            dropout=dropout
+        )
+    elif model_type == 'spatial_conv':
+        # Phase 5: Convolutional Reasoner (No flattening)
+        reasoner = SpatialConvolutionalReasoner(
+            feature_dim=feature_dim,
+            hidden_dim=hidden_dim
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}")
