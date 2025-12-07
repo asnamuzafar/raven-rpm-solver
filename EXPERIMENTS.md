@@ -202,7 +202,7 @@ Adding contrastive loss improved convergence speed but did not beat the baseline
 **Result:** Reached **27.1%** Val Acc.
 **Analysis:** Severe Overfitting! Train Acc reached **75.6%**. The explicit position supervision worked too well—the model memorized the absolute position of every object in the training set but failed to generalize the rules to new positions. The "Spatial Adapter" (flattening grid to vector) breaks translational invariance.
 
-### Experiment 13: SPATIAL CONVOLUTIONAL REASONER (Dec 7, 2024) - RUNNING
+### Experiment 13: SPATIAL CONVOLUTIONAL REASONER (Dec 7, 2024) - STOPPED
 **Config:**
 - Model: **Spatial Convolutional Reasoner** (Phase 5)
 - Encoder: Spatial ResNet (Flatten=False) -> (B, 512, 5, 5)
@@ -210,13 +210,27 @@ Adding contrastive loss improved convergence speed but did not beat the baseline
 - Loss: CrossEntropy + Contrastive (1.0)
 - Dataset: I-RAVEN large
 
-**Hypothesis:** Replacing the flattening adapter with a Convolutional Reasoner will enforce translational invariance. The model will learn rules like "shift right" that apply anywhere, solving the generalization gap.
+**Result:** Reached **34.0%** Val Acc (Peak).
+**Analysis:** Massive Overfitting! Train Acc reached **90%**. The Convolutional Reasoner is powerful enough to solve the task (proving the architecture works), but it memorized the training set. It needs regularization.
 
-**Status:** Epoch 3: **26.1%** Val (Train 26.0%). **NO OVERFITTING!**
-Compare to Exp 12: Ep 3 was 21.5%.
-This model is generalizing perfectly so far.
+### Experiment 14: CONV REASONER + ATTRIBUTE SUPERVISION (Dec 7, 2024) - RUNNING (Retry 4)
+**Config:**
+- Model: Spatial Convolutional Reasoner + **Aux Attribute Head**
+- Loss: CrossEntropy + Contrastive (1.0) + **Attribute (1.0)**
+- Dropout: **0.5** (Verified active in Conv Blocks)
+- Dataset: I-RAVEN large
 
----
+### Experiment 14: CONV REASONER + ATTRIBUTE SUPERVISION (Dec 7, 2024) - STOPPED
+**Config:**
+- Model: Spatial Convolutional Reasoner + **Aux Attribute Head**
+- Loss: CrossEntropy + Contrastive (1.0) + **Attribute (1.0)**
+- Dropout: **0.5** (Verified active in Conv Blocks)
+- Dataset: I-RAVEN large
+
+**Result:** Reached **24.9%** Val Acc (Peak) then degraded.
+**Analysis:** FAILED. Regularization hurt the peak performance (down from 34% in Exp 13) but **did not stop overfitting** (Train reached 58% while Val stuck at 23%).
+**Conclusion:** Simple regularization (dropout/aux loss) is not enough. The model is still memorizing "visual shortcuts" instead of "rules". We need **Structural Consistency Learning (SCL)** to force the model to verify that the answer choice follows the *same rule* as the context.
+
 
 
 
@@ -230,6 +244,20 @@ The ~60% gap indicates SOTA methods use more sophisticated approaches:
 - Perception-to-reasoning pipelines
 - Rule-based symbolic reasoning
 - Answer set programming
+
+### Experiment 15: SCL + SPATIAL CONV + ATTR SUP (Dec 7, 2024) - RUNNING
+**Config:**
+- Model: Spatial Convolutional Reasoner + Aux Attr + **SCL Loss**
+- Loss: CE + Contrastive + Attr + **Consistency `MSE(Row0, Row1)`**
+- Dropout: 0.5
+- Dataset: I-RAVEN large
+
+**Hypothesis:** Structural Consistency Learning (SCL) is the key. By forcing the latent rule embedding of Row 0 to match Row 1, the model cannot just memorize visual patterns. It *must* extract a rule that is invariant across rows. This should solve the overfitting.
+
+**Status:**
+- Ep 1: 13.3% Train / 15.4% Val (SCL Loss 0.09) - Model learning constraints.
+- Ep 2: 15.4% Train / 17.4% Val (SCL Loss 0.027) - Rules aligning.
+Slow but steady. Overfitting is completely suppressed (Val > Train).
 
 ---
 
