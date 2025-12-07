@@ -76,17 +76,14 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# Step 1: Create virtual environment
-echo -e "\n${YELLOW}[1/6] Creating virtual environment...${NC}"
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-    echo -e "${GREEN}✓ Virtual environment created${NC}"
+# Step 1: Activate virtual environment if it exists
+echo -e "\n${YELLOW}[1/5] Checking virtual environment...${NC}"
+if [ -d "venv" ]; then
+    source venv/bin/activate
+    echo -e "${GREEN}✓ Virtual environment activated${NC}"
 else
-    echo -e "${GREEN}✓ Virtual environment already exists${NC}"
+    echo -e "${YELLOW}! No venv found. Using system Python.${NC}"
 fi
-
-# Activate virtual environment
-source venv/bin/activate
 
 # Step 2: Install dependencies
 echo -e "\n${YELLOW}[2/6] Installing dependencies...${NC}"
