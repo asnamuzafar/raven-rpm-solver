@@ -345,6 +345,12 @@ def main():
                         help='Directory to save models')
     parser.add_argument('--debug', action='store_true',
                         help='Debug mode with minimal data')
+    parser.add_argument('--encoder', type=str, default='resnet', choices=['resnet', 'simple'],
+                        help='Encoder type: resnet (11M params) or simple (500K params)')
+    parser.add_argument('--feature_dim', type=int, default=512,
+                        help='Feature dimension (512 for resnet, recommend 128-256 for simple)')
+    parser.add_argument('--freeze_encoder', action='store_true',
+                        help='Freeze encoder weights (only train reasoner)')
     args = parser.parse_args()
     
     # Setup
@@ -359,6 +365,8 @@ def main():
     print(f"Batch size: {args.batch_size}")
     print(f"Learning rate: {args.lr}")
     print(f"Attribute loss weight: {args.lambda_attr}")
+    print(f"Encoder: {args.encoder} (feature_dim={args.feature_dim})")
+    print(f"Freeze encoder: {args.freeze_encoder}")
     
     # Create dataloaders
     train_dl, val_dl, test_dl = create_dataloaders_with_meta(
@@ -367,14 +375,16 @@ def main():
         num_workers=NUM_WORKERS
     )
     
-    # Create model - use ResNet encoder (not simple) for better features
-    # ResNet is pretrained and provides 512-dim features
+    # Create model based on encoder choice
+    use_simple = (args.encoder == 'simple')
+    feature_dim = args.feature_dim if use_simple else 512  # ResNet always outputs 512
+    
     model = create_model(
         model_type='neuro_symbolic',
         pretrained_encoder=True,
-        freeze_encoder=False,
-        use_simple_encoder=False,  # Use ResNet for 512-dim features
-        feature_dim=512,
+        freeze_encoder=args.freeze_encoder,
+        use_simple_encoder=use_simple,
+        feature_dim=feature_dim,
         hidden_dim=256,
         dropout=DROPOUT
     )

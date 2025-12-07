@@ -77,21 +77,35 @@ python train_neuro_symbolic.py --data_dir ./data/iraven_large --epochs 15
 
 ---
 
-## Key Findings
+### Experiment 6: Medium Dataset Fast Iteration (Dec 7, 2024)
+**Goal:** Fast experimentation on medium dataset (8,400 train samples) to find better architectures before scaling.
 
-### What Works:
-1. **Pretrained ResNet-18 encoder** - Best feature extractor for RAVEN
-2. **End-to-end training** - Fine-tuning encoder is essential
-3. **Neuro-Symbolic approach** - Rule prediction + attribute extraction (32.9%)
-4. **Structure-aware reasoning** - Explicit row/column/diagonal modeling
-5. **I-RAVEN over RAVEN** - Fixes distribution biases
-6. **More training data** - 21k samples significantly better than 8.4k
+**Results on I-RAVEN Medium:**
+| Model | Trainable Params | Val Accuracy | Train Acc | Notes |
+|-------|------------------|--------------|-----------|-------|
+| **RelationNet** | 12.1M | **23.5%** | 57.6% | Best on medium |
+| Neuro-Symbolic (λ_attr=2.0) | 12.9M | 22.1% | 39.8% | Higher attr loss |
+| Transformer | 13.7M | 21.4% | 51.5% | Similar to RN |
+| Frozen ResNet | 1.8M | 18.3% | 19.0% | Reasoner-only |
+| SimpleConv 128-dim | 2.0M | 13.7% | 12.2% | ❌ Too weak |
 
-### What Doesn't Work:
-1. **Frozen encoders** - Features not discriminative enough
-2. **DINOv2/CLIP/EfficientNet** - Don't outperform ResNet-18
-3. **High dropout (>0.3)** - Prevents learning
-4. **Training CNN from scratch** - Feature collapse
+**Key Finding: Severe Overfitting**
+All models show massive train-val gap (train 50-60% vs val 20-23%). This indicates:
+1. Model capacity is too high for dataset size
+2. Need better regularization or data augmentation
+3. Dataset size matters significantly (medium 23% vs large 33%)
+
+**Commands:**
+```bash
+# RelationNet (best on medium)
+python train.py --models relation_net --data_dir ./data/iraven_medium --epochs 10
+
+# Neuro-symbolic with higher attribute loss
+python train_neuro_symbolic.py --data_dir ./data/iraven_medium --epochs 10 --lambda_attr 2.0
+
+# Quick test with frozen encoder
+python train_neuro_symbolic.py --data_dir ./data/iraven_medium --epochs 5 --freeze_encoder
+```
 
 ---
 
