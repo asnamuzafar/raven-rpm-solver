@@ -11,6 +11,7 @@ import torch.nn as nn
 from typing import Optional, Dict, List, Tuple
 
 from .encoder import RAVENFeatureExtractor
+from .encoder_spatial import SpatialFeatureExtractor
 from .tokenizer import SymbolicTokenizer
 from .reasoner import TransformerReasoner, MLPRelationalReasoner
 from .rule_reasoner import RuleAwareReasoner, NeuroSymbolicModel
@@ -150,6 +151,7 @@ def create_model(
     pretrained_encoder: bool = True,
     freeze_encoder: bool = False,
     use_simple_encoder: bool = True,
+    encoder_type: str = 'resnet',  # 'resnet', 'simple', 'spatial'
     feature_dim: int = 256,
     hidden_dim: int = 512,
     num_heads: int = 8,
@@ -176,13 +178,23 @@ def create_model(
         FullRAVENModel or FullRAVENModelWithTokenizer instance
     """
     # Stage A: Create encoder
-    # Simple encoder works better for RAVEN abstract geometric puzzles
-    encoder = RAVENFeatureExtractor(
-        pretrained=pretrained_encoder, 
-        freeze=freeze_encoder,
-        use_simple_encoder=use_simple_encoder,
-        feature_dim=feature_dim
-    )
+    if encoder_type == 'spatial':
+        # New Spatial ResNet with CoordConv (Phase 4)
+        encoder = SpatialFeatureExtractor(
+            pretrained=pretrained_encoder,
+            freeze=freeze_encoder,
+            feature_dim=feature_dim
+        )
+    else:
+        # Backward compatibility for use_simple_encoder flag
+        use_simple = use_simple_encoder or (encoder_type == 'simple')
+        
+        encoder = RAVENFeatureExtractor(
+            pretrained=pretrained_encoder, 
+            freeze=freeze_encoder,
+            use_simple_encoder=use_simple,
+            feature_dim=feature_dim
+        )
     
     # Stage B: Create tokenizer (optional)
     tokenizer = SymbolicTokenizer(feature_dim=feature_dim, hidden_dim=hidden_dim // 2) if include_tokenizer else None

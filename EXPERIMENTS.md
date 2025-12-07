@@ -109,6 +109,90 @@ python train_neuro_symbolic.py --data_dir ./data/iraven_medium --epochs 5 --free
 
 ---
 
+### Experiment 7: SCL Baseline (Dec 7, 2024)
+**Config:**
+- SCL Reasoner (Row/Col attention + Contrastive Loss)
+- ResNet-18 Encoder (pretrained)
+- No attribute supervision
+- Dataset: I-RAVEN large (35K samples)
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| 1 | 15.1% | 16.7% | Learning started |
+| 5 | 22.2% | 21.0% | Steady progress |
+| 8 | 28.5% | **22.8%** | Peaked then stalled |
+
+**Finding:** SCL architecture learns but overfits quickly without attribute supervision or stronger regularization. Accuracy (22.8%) is comparable to baseline models but below best neuro-symbolic (32.9%).
+
+---
+
+### Experiment 8: SCL + Attribute Supervision (Dec 7, 2024)
+**Config:**
+- SCL Reasoner
+- Attribute Supervision (λ_attr=1.0)
+- batch_size=64
+- Dataset: I-RAVEN large
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| 1 | 13.8% | 15.5% | Slow start |
+| 5 | 21.6% | 21.2% | Plateaued early |
+| 7 | 24.8% | 21.1% | Overfitting started |
+
+**Finding:** Adding strong attribute supervision (λ=1.0) didn't help with batch_size=64. The model stalled at 21%. Might need larger batch size for proper contrastive learning or lower attribute weight.
+
+---
+
+### Experiment 9: SCL Large Batch (Dec 7, 2024)
+**Config:**
+- SCL Reasoner
+- Batch Size = 128
+- Attribute Supervision (λ=0.5)
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| 1 | 13.5% | 15.2% | Slower start than batch 64 |
+| 3 | 18.6% | 19.8% | Parity with batch 64 |
+| 4 | 19.8% | 19.1% | Regression |
+
+**Finding:** Large batch size didn't magically solve the issue. The SCL-inspired architecture itself might be too simple or needs components from the original paper (GNNs).
+
+---
+
+### Experiment 10: Neuro-Symbolic + SCL Contrastive Loss (Dec 7, 2024)
+**Config:**
+- Model: Neuro-Symbolic (RuleAwareReasoner)
+- Loss: CrossEntropy + Attribute (0.5) + Contrastive (1.0)
+- Dataset: I-RAVEN large (35K samples)
+- Batch Size: 64
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Notes |
+|-------|-----------|---------|-------|
+| 1 | 16.1% | 20.5% | Fast start |
+| 5 | 27.1% | **27.3%** | Peaked early |
+| 10 | 41.7% | 26.3% | Strong overfitting |
+
+**Analysis:**
+Adding contrastive loss improved convergence speed but did not beat the baseline 32.9%. The validation accuracy peaked at 27.3% and then degraded while training accuracy continued to climb (overfitting).
+**CRITICAL FINDING:** `ResNetVisualEncoder` uses `avgpool` which suppresses spatial information. This likely prevents the model from solving "Position" based rules, acting as a hard ceiling on performance.
+
+---
+
+### Experiment 11: SPATIAL REASONING (Dec 7, 2024) - RUNNING
+**Config:**
+- Model: Neuro-Symbolic + SpatialResNet
+- Encoder: **Spatial ResNet (No Pooling, CoordConv)**
+- Loss: CrossEntropy + Contrastive (1.0) + Attribute (0.5)
+- Dataset: I-RAVEN large
+
+**Hypothesis:** By preserving the 5x5 feature grid and adding coordinate channels, the model will finally be able to solve "Position" rules, breaking the 33% ceiling.
+
+---
+
 ## Gap to SOTA
 
 | Metric | Our Best | Published SOTA |
