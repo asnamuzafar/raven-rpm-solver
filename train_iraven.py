@@ -39,11 +39,11 @@ from tqdm import tqdm
 # Import from existing model modules
 from config import DEVICE, NUM_WORKERS
 from utils.dataset import create_dataloaders
-from models.encoder import ResNetVisualEncoder, SimpleConvEncoder, RAVENFeatureExtractor
-from models.encoder_spatial import SpatialFeatureExtractor
-from models.baselines import RelationNetwork, CNNDirectBaseline
-from models.reasoner import TransformerReasoner, MLPRelationalReasoner
-from models.reasoner_spatial_conv import SpatialConvolutionalReasoner
+from models.iraven.encoder import ResNetVisualEncoder, SimpleConvEncoder, RAVENFeatureExtractor
+from models.iraven.encoder_spatial import SpatialFeatureExtractor
+from models.iraven.baselines import RelationNetwork, CNNDirectBaseline
+from models.iraven.reasoner import TransformerReasoner, MLPRelationalReasoner
+from models.iraven.reasoner_spatial_conv import SpatialConvolutionalReasoner
 
 
 def set_seed(seed: int = 42):

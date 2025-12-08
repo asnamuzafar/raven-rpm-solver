@@ -27,7 +27,7 @@ import re
 
 # Try to import symbolic reasoner for rule-trace fidelity evaluation
 try:
-    from models.baselines import SymbolicReasoner
+    from models.iraven.baselines import SymbolicReasoner
     SYMBOLIC_AVAILABLE = True
 except ImportError:
     SYMBOLIC_AVAILABLE = False

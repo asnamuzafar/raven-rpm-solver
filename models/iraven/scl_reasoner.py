@@ -304,7 +304,7 @@ def create_scl_model(
     dropout: float = 0.1
 ) -> SCLModel:
     """Factory function to create SCL model."""
-    from models.encoder import RAVENFeatureExtractor
+    from .encoder import RAVENFeatureExtractor
     
     encoder = RAVENFeatureExtractor(
         pretrained=pretrained_encoder,

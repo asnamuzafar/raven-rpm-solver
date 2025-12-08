@@ -35,8 +35,8 @@ from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
 # Import models from models directory
-from models.relation_network_clevr import SortOfCLEVRModel, BaselineCNN
-from sort_of_clevr_generator import SortOfCLEVRDataset, generate_dataset
+from models.clevr.relation_network import SortOfCLEVRModel, BaselineCNN
+from datasets.sort_of_clevr_generator import SortOfCLEVRDataset, generate_dataset
 
 
 def set_seed(seed=42):

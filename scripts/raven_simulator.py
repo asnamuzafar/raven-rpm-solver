@@ -26,7 +26,7 @@ import seaborn as sns
 # Import project modules
 try:
     from models import create_model, load_model, SymbolicReasoner, SymbolicTokenizer
-    from models.encoder import RAVENFeatureExtractor
+    from models.iraven.encoder import RAVENFeatureExtractor
     from config import DEVICE, HIDDEN_DIM, NUM_HEADS, NUM_LAYERS, DROPOUT
     MODELS_AVAILABLE = True
 except ImportError as e:

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from config import *
 from models import create_model, load_model, SymbolicReasoner, SymbolicTokenizer
-from models.encoder import RAVENFeatureExtractor
+from models.iraven.encoder import RAVENFeatureExtractor
 from utils import create_dataloaders, ModelEvaluator
 
 
