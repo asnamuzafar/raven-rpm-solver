@@ -286,6 +286,54 @@ python train.py --models relation_net --data_dir ./data/iraven_large --epochs 10
 python train.py --models transformer --data_dir ./data/iraven_large --epochs 10
 
 # Test different encoders
-python train.py --encoder efficientnet --models relation_net --epochs 10
 python train.py --encoder dinov2 --models relation_net --epochs 5
 ```
+
+---
+
+### Experiment 16: Rule-Aware Reasoner V2 (Spatial + SCL + Attr) (Dec 8, 2024) - FAILED
+**Config:**
+- **Model:** RuleAwareReasonerV2
+- **Architecture:** Spatial Rule Encoder (3-layer Conv) + Attr Head + SCL w/ explicit Consistency Scoring
+- **Loss:** CE + Contrastive(1.0) + SCL(1.0) + Attr(1.0)
+- **Score:** Validity + Consistency (-MSE)
+- **Dataset:** I-RAVEN large (21k train)
+
+**Result:** Reached **24.2%** Val Acc at Epoch 17.
+**Analysis:**
+FAILED. The model followed the same pattern as Exp 13 and 14:
+1.  Early epochs (1-5) showed promise with Val > Train.
+2.  By Epoch 10, Train Acc skyrocketed (surpassing 30%) while Val Acc plateaued at 24%.
+3.  By Epoch 18, Train Acc hit **60%** while Val Acc remained at **23-24%**.
+
+**Conclusion:**
+The "Rule Encoder" is too powerful/flexible. It is memorizing the specific visual features of the context panels instead of extracting abstract rules. Even with SCL forcing `Rule(Row0) == Rule(Row1)`, the encoder likely found a way to map "visual similarity" to the same embedding space rather than "logical rule". 
+
+We must constrain the bottleneck even further or switch to a **scattering transform** or **hard-coded rule checks** (symbolic only) to prevent visual memorization.
+
+
+### Experiment 17: Rule-Aware Reasoner V3 (Neuro-Symbolic)
+- **Status:** FAILED
+- **Date:** 2025-12-08
+- **Description:** Pivoted to a strict Neuro-Symbolic approach. Trained a `PerceptionNet` to extract attributes (Type, Size, Color, etc.) and a deterministic `SymbolicReasoner` to predict answers.
+- **Outcome:** Perception training plateaued at ~80% accuracy.
+- **Analysis:**
+    - The I-RAVEN metadata schema is highly variable. "Row 0" of the attribute matrix might be "Type" in `center_single` but "Number" in `distribute_four`.
+    - Without a perfect schema mapping (which is complex to reverse-engineer), the supervised learning signals were noisy/incorrect.
+- **Conclusion:** Disentangling perception from reasoning is too brittle without a clean, unified dataset schema. Reverting to End-to-End learning (V2) but focusing on architecture simplification to solve overfitting.
+
+### Experiment 18: Regularized Rule-Aware Reasoner V2 (Dec 8, 2024) - PAUSED (Promising)
+**Config:**
+- **Model:** Regularized V2 (SimpleSpatialEncoder + RuleAwareReasonerV2)
+- **Encoder:** 4-Layer Simple CNN (No Pretraining) -> AdaptiveAvgPool -> MLP
+- **Regularization:** Dropout 0.5, Weight Decay 1e-4, Augmentation True
+- **Loss:** CE + Con(1.0) + SCL(0.1) + Attr(0.5)
+- **Batch Size:** 32
+
+**Hypothesis:**
+Replacing the powerful `SpatialResNet` with a simple CNN trained from scratch will prevent the massive overfitting seen in Exp 13-16. Reducing SCL weight allows the model to focus on task accuracy first.
+
+**Status:**
+- Ep 1: 14.5% Train / 15.5% Val (Good start, no overfitting)
+- Ep 2: 15.5% Train / 16.3% Val (Stable growth)
+- **Stopped manually to conclude session.**
