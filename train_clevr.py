@@ -161,7 +161,7 @@ Examples:
     # Dataset generation
     parser.add_argument('--generate', action='store_true',
                         help='Generate Sort-of-CLEVR dataset')
-    parser.add_argument('--num_images', type=int, default=5000,
+    parser.add_argument('--num_images', type=int, default=10000,
                         help='Number of images to generate')
     parser.add_argument('--questions_per_image', type=int, default=10,
                         help='Questions per image')
@@ -175,8 +175,8 @@ Examples:
     
     # Training
     parser.add_argument('--epochs', type=int, default=30)
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--lr', type=float, default=2.5e-4)
     parser.add_argument('--seed', type=int, default=42)
     
     args = parser.parse_args()

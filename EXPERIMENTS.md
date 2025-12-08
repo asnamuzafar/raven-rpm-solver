@@ -395,6 +395,32 @@ Replacing the powerful `SpatialResNet` with a simple CNN trained from scratch wi
 
 ---
 
+### Experiment 22: Sort-of-CLEVR - Improved Relation Network ✅ BEST (Dec 8, 2024)
+**Config:**
+- **Dataset:** Sort-of-CLEVR (70K train, 15K val, 15K test)
+- **Model:** Relation Network (Paper-faithful implementation)
+- **Architecture Fixes:**
+  - CNN Encoder: 24 → **64 channels**
+  - g_theta: 256 → **512 hidden units**
+  - f_phi: **3-layer MLP** (512→1024→output) with 2% dropout (was 50%)
+- **Parameters:** 1.76M (was 295K)
+- **Training:** 16 epochs (early stopped), batch_size=128, lr=2.5e-4
+
+**Results:**
+| Epoch | Train Acc | Val Acc | Val Rel | Val Non-Rel |
+|-------|-----------|---------|---------|-------------|
+| 7 | 81.2% | 81.7% | 63.9% | 99.7% |
+| 16 | 92.5% | **87.3%** | 74.8% | 99.9% |
+
+**Test Results:**
+- **Overall Accuracy: 86.9%** ✅ (+22.2% improvement)
+- **Relational: 73.8%** (+9.2%)
+- **Non-Relational: 99.9%** (+35.0%)
+
+**Analysis:** The improved model nearly solves non-relational tasks (99.9%) and significantly improves relational reasoning (73.8%). Key fixes were: larger CNN, bigger hidden dimensions matching the original paper, and reducing dropout from 50% to 2%.
+
+---
+
 ## Final Results Summary
 
 ### I-RAVEN (Failed - Too Difficult)
@@ -406,7 +432,8 @@ Replacing the powerful `SpatialResNet` with a simple CNN trained from scratch wi
 ### Sort-of-CLEVR (Success)
 | Model | Test Accuracy | Relational | Non-Relational |
 |-------|---------------|------------|----------------|
-| **Relation Network** | **64.7%** | 64.6% | 64.9% |
+| **Improved Relation Network** | **86.9%** | 73.8% | **99.9%** |
+| Original Relation Network | 64.7% | 64.6% | 64.9% |
 | CNN Baseline | 52.6% | 54.2% | 50.9% |
 
-**Key Insight:** The Relation Network architecture successfully learns relational reasoning, outperforming the CNN baseline especially on relational questions. This validates the core hypothesis that explicit relational modules improve reasoning.
+**Key Insight:** Matching the original paper's architecture specifications (larger CNN, 512 hidden units, 2% dropout instead of 50%) dramatically improved accuracy from 64.7% to 86.9%. The model nearly perfectly solves non-relational tasks (99.9%) and significantly improves on relational reasoning (73.8% vs 64.6%).

@@ -32,23 +32,23 @@ class CNNEncoder(nn.Module):
         
         self.conv = nn.Sequential(
             # 128 -> 64
-            nn.Conv2d(3, 24, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(24),
+            nn.Conv2d(3, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             
             # 64 -> 32
-            nn.Conv2d(24, 24, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(24),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             
             # 32 -> 16
-            nn.Conv2d(24, 24, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(24),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             
             # 16 -> 5 (approximately)
-            nn.Conv2d(24, 24, kernel_size=3, stride=2, padding=0),
-            nn.BatchNorm2d(24),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=0),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
         )
         
@@ -74,10 +74,10 @@ class CNNEncoder(nn.Module):
         coord_w = coord_w.unsqueeze(0).unsqueeze(0).expand(B, 1, -1, -1)
         
         # Concatenate
-        x = torch.cat([x, coord_h, coord_w], dim=1)  # (B, 26, H, W)
+        x = torch.cat([x, coord_h, coord_w], dim=1)  # (B, 66, H, W)
         
         # Flatten spatial dimensions
-        x = x.view(B, 26, -1).permute(0, 2, 1)  # (B, H*W, 26)
+        x = x.view(B, 66, -1).permute(0, 2, 1)  # (B, H*W, 66)
         
         return x
 
@@ -89,11 +89,11 @@ class RelationNetwork(nn.Module):
     Processes all pairs of objects: RN = sum(g(o_i, o_j, q))
     Then passes through f: output = f(RN)
     """
-    def __init__(self, object_dim=26, question_dim=8, hidden_dim=256, output_dim=2):
+    def __init__(self, object_dim=66, question_dim=8, hidden_dim=512, output_dim=2):
         super().__init__()
         
         # g_theta: processes object pairs with question
-        # Input: (o_i, o_j, q) = 26 + 26 + 8 = 60
+        # Input: (o_i, o_j, q) = 66 + 66 + 8 = 140
         self.g_theta = nn.Sequential(
             nn.Linear(object_dim * 2 + question_dim, hidden_dim),
             nn.ReLU(),
@@ -105,12 +105,14 @@ class RelationNetwork(nn.Module):
             nn.ReLU(),
         )
         
-        # f_phi: processes aggregated relations
+        # f_phi: processes aggregated relations (3-layer MLP matching paper)
         self.f_phi = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(hidden_dim, output_dim),
+            nn.Linear(hidden_dim, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.02),  # Paper uses 2% dropout
+            nn.Linear(1024, output_dim),
         )
         
     def forward(self, objects, question):
@@ -155,12 +157,12 @@ class SortOfCLEVRModel(nn.Module):
     
     Combines CNN encoder with Relation Network.
     """
-    def __init__(self, question_dim=8, num_answers=2, hidden_dim=256):
+    def __init__(self, question_dim=8, num_answers=2, hidden_dim=512):
         super().__init__()
         
         self.encoder = CNNEncoder()
         self.rn = RelationNetwork(
-            object_dim=26,  # 24 CNN features + 2 coordinates
+            object_dim=66,  # 64 CNN features + 2 coordinates
             question_dim=question_dim,
             hidden_dim=hidden_dim,
             output_dim=num_answers
