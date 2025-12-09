@@ -1,0 +1,30 @@
+
+\begin{table}[h]
+\centering
+\caption{Experimental Results Summary}
+\label{tab:results}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Val Acc (\%)} & \textbf{Params (M)} & \textbf{Dataset} \\
+\midrule
+\multicolumn{4}{l}{\textit{I-RAVEN Experiments}} \\
+\midrule
+Neuro-Symbolic (RuleAwareReasoner) & \textbf{32.9} & 12.9 & I-RAVEN Large \\
+Transformer & 26.9 & 13.7 & I-RAVEN Large \\
+RelationNet & 26.2 & 12.1 & I-RAVEN Large \\
+EfficientNet Encoder & 21.1 & 4.6 & I-RAVEN Large \\
+DINOv2 Encoder & 13.7 & 22.0 & I-RAVEN Large \\
+\midrule
+\multicolumn{4}{l}{\textit{Sort-of-CLEVR Experiments}} \\
+\midrule
+Improved Relation Network & \textbf{86.9} & 1.76 & Sort-of-CLEVR \\
+Original Relation Network & 64.7 & 0.295 & Sort-of-CLEVR \\
+CNN Baseline & 52.6 & 4.6 & Sort-of-CLEVR \\
+\midrule
+\multicolumn{4}{l}{\textit{Published Baselines}} \\
+\midrule
+Random Chance (8-way) & 12.5 & -- & I-RAVEN \\
+Published SOTA & 92.9 & -- & I-RAVEN \\
+\bottomrule
+\end{tabular}
+\end{table}

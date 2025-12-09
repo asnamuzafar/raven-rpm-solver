@@ -116,3 +116,4 @@ Desktop.ini
 *.rar
 *.7z
 
+!figures/*.png
