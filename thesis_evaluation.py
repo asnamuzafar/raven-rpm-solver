@@ -664,6 +664,173 @@ Published SOTA & 92.9 & -- & I-RAVEN \\
     print(f"✓ Saved: results_table.tex")
 
 
+def fig10_clevr_relational_breakdown():
+    """
+    Figure 10: CLEVR Relational vs Non-Relational Performance
+    Donut charts comparing performance on different question types.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(14, 6))  # Increased height
+    
+    models = ['CNN Baseline', 'Original RN', 'Improved RN']
+    rel_accs = [54.2, 64.6, 73.8]
+    
+    for ax, model, rel in zip(axes, models, rel_accs):
+        # Create donut chart
+        sizes = [rel, 100 - rel]
+        colors = [COLORS['primary'], COLORS['light']]
+        wedges, texts, autotexts = ax.pie(sizes, colors=colors, autopct='',
+                                          startangle=90, explode=(0.02, 0),
+                                          wedgeprops=dict(width=0.4))
+        ax.set_title(f'{model}', fontweight='bold', fontsize=12, pad=15)
+        
+        # Add center text - positioned correctly in center
+        ax.text(0, 0.08, 'Relational', ha='center', va='center', fontsize=9, 
+                fontweight='bold', color=COLORS['neutral'])
+        ax.text(0, -0.12, f'{rel:.1f}%', ha='center', va='center', fontsize=16, 
+                fontweight='bold', color=COLORS['primary'])
+    
+    fig.suptitle('Sort-of-CLEVR: Relational Question Accuracy by Model', 
+                 fontweight='bold', fontsize=14, y=0.98)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.93])  # Leave room for suptitle
+    plt.savefig(OUTPUT_DIR / 'fig10_clevr_relational_breakdown.png')
+    plt.close()
+    print(f"✓ Saved: fig10_clevr_relational_breakdown.png")
+
+
+def fig11_clevr_improvement_journey():
+    """
+    Figure 11: CLEVR Model Improvement Journey
+    Stacked area chart showing improvement in relational and non-relational tasks.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    models = ['CNN\nBaseline', 'Original\nRelation Net', 'Improved\nRelation Net']
+    x = np.arange(len(models))
+    
+    rel_accs = [54.2, 64.6, 73.8]
+    nonrel_accs = [50.9, 64.9, 99.9]
+    
+    # Plot as line chart with markers
+    ax.plot(x, rel_accs, 'o-', color=COLORS['secondary'], linewidth=3, 
+            markersize=15, label='Relational', markeredgecolor='white', markeredgewidth=2)
+    ax.plot(x, nonrel_accs, 's-', color=COLORS['accent'], linewidth=3, 
+            markersize=15, label='Non-Relational', markeredgecolor='white', markeredgewidth=2)
+    
+    # Fill between for visual emphasis
+    ax.fill_between(x, rel_accs, alpha=0.2, color=COLORS['secondary'])
+    ax.fill_between(x, nonrel_accs, alpha=0.2, color=COLORS['accent'])
+    
+    # Add value annotations
+    for i, (r, nr) in enumerate(zip(rel_accs, nonrel_accs)):
+        ax.annotate(f'{r:.1f}%', (i, r), xytext=(0, 10), textcoords='offset points',
+                    ha='center', fontweight='bold', fontsize=11, color=COLORS['secondary'])
+        ax.annotate(f'{nr:.1f}%', (i, nr), xytext=(0, 10), textcoords='offset points',
+                    ha='center', fontweight='bold', fontsize=11, color=COLORS['accent'])
+    
+    # Random baseline
+    ax.axhline(y=50, color=COLORS['neutral'], linestyle='--', linewidth=2, 
+               alpha=0.5, label='Random Chance')
+    
+    # Annotations
+    ax.annotate('Near-perfect\nperformance!', xy=(2, 99.9), xytext=(1.3, 85),
+                arrowprops=dict(arrowstyle='->', color=COLORS['success'], lw=2),
+                fontsize=10, fontweight='bold', color=COLORS['success'])
+    
+    ax.annotate('+19.6%\nimprovement', xy=(1.5, 69), xytext=(1.8, 60),
+                fontsize=9, fontweight='bold', color=COLORS['secondary'], ha='center')
+    
+    ax.set_ylabel('Accuracy (%)', fontweight='bold')
+    ax.set_xlabel('Model', fontweight='bold')
+    ax.set_title('Sort-of-CLEVR: Model Improvement Journey', fontweight='bold', pad=15)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models)
+    ax.set_ylim(40, 105)
+    ax.legend(loc='lower right', framealpha=0.9)
+    ax.grid(axis='y', alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / 'fig11_clevr_improvement_journey.png')
+    plt.close()
+    print(f"✓ Saved: fig11_clevr_improvement_journey.png")
+
+
+def fig12_clevr_rn_architecture():
+    """
+    Figure 12: Relation Network Architecture Diagram
+    Visual explanation of how RN processes object pairs.
+    Accurate to models/clevr/relation_network.py
+    """
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.axis('off')
+    
+    # CENTERED: Stage boxes - shifted right by 0.04 to center
+    # Based on actual codebase: 64 CNN features + 2 coordinate channels = 66 dims
+    # 128->64->32->16->7 spatial, so 7×7=49 objects (code comment says 5×5 but actual is ~7×7)
+    stages = [
+        ('Input\nImage', '128×128\nRGB', '#E8E8E8', 0.06),
+        ('CNN\nEncoder', '4 Conv layers\n64 channels', COLORS['primary'], 0.22),
+        ('Object\nTokens', '49 Objects\n(7×7) + coords', COLORS['secondary'], 0.42),
+        ('Relation\nNetwork', 'g(oᵢ, oⱼ, q)\nsum over pairs', COLORS['accent'], 0.62),
+        ('f_phi\nMLP', '512→1024→2\nclassifier', COLORS['success'], 0.82),
+    ]
+    
+    box_width = 0.14
+    box_height = 0.45
+    y = 0.30
+    
+    for title, desc, color, x in stages:
+        # Draw rounded box
+        rect = mpatches.FancyBboxPatch((x, y), box_width, box_height,
+                                        boxstyle="round,pad=0.02",
+                                        facecolor=color, alpha=0.85,
+                                        edgecolor='white', linewidth=3)
+        ax.add_patch(rect)
+        
+        # Title
+        ax.text(x + box_width/2, y + box_height - 0.06, title,
+               ha='center', va='top', fontsize=10, fontweight='bold',
+               color='white' if color != '#E8E8E8' else COLORS['neutral'])
+        
+        # Description
+        ax.text(x + box_width/2, y + 0.12, desc,
+               ha='center', va='center', fontsize=8,
+               color='white' if color != '#E8E8E8' else COLORS['neutral'])
+    
+    # Draw arrows between stages
+    arrow_props = dict(arrowstyle='->', color=COLORS['neutral'], lw=2)
+    for i in range(len(stages) - 1):
+        x1 = stages[i][3] + box_width + 0.01
+        x2 = stages[i+1][3] - 0.01
+        ax.annotate('', xy=(x2, y + box_height/2), xytext=(x1, y + box_height/2),
+                   arrowprops=arrow_props)
+    
+    # Add key insight box at bottom - centered
+    insight_box = mpatches.FancyBboxPatch((0.20, 0.05), 0.60, 0.12,
+                                           boxstyle="round,pad=0.02",
+                                           facecolor='#FFF3CD', alpha=0.9,
+                                           edgecolor='#FFE69C', linewidth=2)
+    ax.add_patch(insight_box)
+    ax.text(0.50, 0.11, 'Key: RN computes g() for ALL n² object pairs, enabling explicit relational reasoning',
+           ha='center', va='center', fontsize=10, style='italic', color='#664D03')
+    
+    # Add question input - positioned to connect to Relation Network
+    ax.text(0.69, 0.88, 'Question\n(8-dim one-hot)', ha='center', va='center',
+           fontsize=9, fontweight='bold', color=COLORS['secondary'],
+           bbox=dict(boxstyle='round,pad=0.3', facecolor='#F3E8FF', edgecolor=COLORS['secondary']))
+    ax.annotate('', xy=(0.69, y + box_height), xytext=(0.69, 0.80),
+               arrowprops=dict(arrowstyle='->', color=COLORS['secondary'], lw=2))
+    
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_title('Relation Network Architecture (from models/clevr/relation_network.py)', 
+                 fontweight='bold', pad=15, fontsize=13)
+    
+    plt.savefig(OUTPUT_DIR / 'fig12_clevr_rn_architecture.png')
+    plt.close()
+    print(f"✓ Saved: fig12_clevr_rn_architecture.png")
+
+
 def main():
     """Generate all thesis figures."""
     print("=" * 60)
@@ -682,6 +849,12 @@ def main():
     fig7_parameter_efficiency()
     fig8_summary_dashboard()
     fig9_architecture_diagram()
+    
+    # NEW: Additional CLEVR visualizations
+    fig10_clevr_relational_breakdown()
+    fig11_clevr_improvement_journey()
+    fig12_clevr_rn_architecture()
+    
     create_results_table_latex()
     
     print("-" * 60)
