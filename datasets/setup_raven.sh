@@ -72,8 +72,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Get script directory
+# Get script directory and parent directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PARENT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$SCRIPT_DIR"
 
 # Step 1: Activate virtual environment if it exists
@@ -519,12 +520,12 @@ echo -e "${GREEN}✓ Optimizations applied (parallel processing, skip existing f
 
 # Step 5: Generate dataset
 echo -e "\n${YELLOW}[5/6] Generating RAVEN dataset '$DATASET_NAME' (this may take a few minutes)...${NC}"
-mkdir -p "data/$DATASET_NAME"
+mkdir -p "$PARENT_DIR/data/$DATASET_NAME"
 
 cd RAVEN
 
 # Build the command with optional --xml flag
-CMD="PYTHONPATH=src python -m dataset.main_optimized --num-samples $NUM_SAMPLES --save-dir ../data/$DATASET_NAME"
+CMD="PYTHONPATH=src python -m dataset.main_optimized --num-samples $NUM_SAMPLES --save-dir $PARENT_DIR/data/$DATASET_NAME"
 if [ $GENERATE_XML -eq 1 ]; then
     CMD="$CMD --xml"
 fi
@@ -533,7 +534,7 @@ eval $CMD
 cd "$SCRIPT_DIR"
 
 # Count generated files
-NUM_FILES=$(find "data/$DATASET_NAME" -name "*.npz" | wc -l | tr -d ' ')
+NUM_FILES=$(find "$PARENT_DIR/data/$DATASET_NAME" -name "*.npz" | wc -l | tr -d ' ')
 echo -e "${GREEN}✓ Dataset generated: ${NUM_FILES} puzzle files in data/$DATASET_NAME${NC}"
 
 # Step 6: Verify setup
@@ -544,12 +545,12 @@ echo -e "\n${GREEN}=============================================="
 echo "SETUP COMPLETE!"
 echo "==============================================${NC}"
 echo ""
-echo "Dataset: data/$DATASET_NAME ($NUM_FILES puzzles)"
+echo "Dataset: $PARENT_DIR/data/$DATASET_NAME ($NUM_FILES puzzles)"
 echo ""
 echo "Next steps:"
 echo "  1. Activate environment: source venv/bin/activate"
-echo "  2. Train models:         python train.py --data_dir ./data/$DATASET_NAME --epochs 30"
-echo "  3. Evaluate:             python evaluate.py --data_dir ./data/$DATASET_NAME"
+echo "  2. Train models:         python train.py --data_dir $PARENT_DIR/data/$DATASET_NAME --epochs 30"
+echo "  3. Evaluate:             python evaluate.py --data_dir $PARENT_DIR/data/$DATASET_NAME"
 echo "  4. Run simulator:        streamlit run raven_simulator.py"
 echo ""
 echo "Tip: For better model performance, use a larger dataset:"

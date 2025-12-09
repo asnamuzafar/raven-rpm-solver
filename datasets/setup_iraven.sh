@@ -73,8 +73,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Get script directory
+# Get script directory and parent directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PARENT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$SCRIPT_DIR"
 
 # Step 1: Activate virtual environment if it exists
@@ -422,12 +423,12 @@ echo -e "${GREEN}✓ Optimizations applied (parallel processing, skip existing f
 # Step 5: Generate I-RAVEN dataset
 echo -e "\n${YELLOW}[5/5] Generating I-RAVEN dataset '$DATASET_NAME' (this may take a few minutes)...${NC}"
 cd "$SCRIPT_DIR"
-mkdir -p "data/$DATASET_NAME"
+mkdir -p "$PARENT_DIR/data/$DATASET_NAME"
 
 cd I-RAVEN
 
 # Build the command with optional --xml flag
-CMD="python main_optimized.py --num-samples $NUM_SAMPLES --save-dir ../data/$DATASET_NAME"
+CMD="python main_optimized.py --num-samples $NUM_SAMPLES --save-dir $PARENT_DIR/data/$DATASET_NAME"
 if [ $GENERATE_XML -eq 1 ]; then
     CMD="$CMD --xml"
 fi
@@ -436,20 +437,20 @@ eval $CMD
 cd "$SCRIPT_DIR"
 
 # Count generated files
-NUM_FILES=$(find "data/$DATASET_NAME" -name "*.npz" | wc -l | tr -d ' ')
-echo -e "${GREEN}✓ I-RAVEN dataset generated: ${NUM_FILES} puzzle files in data/$DATASET_NAME${NC}"
+NUM_FILES=$(find "$PARENT_DIR/data/$DATASET_NAME" -name "*.npz" | wc -l | tr -d ' ')
+echo -e "${GREEN}✓ I-RAVEN dataset generated: ${NUM_FILES} puzzle files in $PARENT_DIR/data/$DATASET_NAME${NC}"
 
 echo -e "\n${GREEN}=============================================="
 echo "I-RAVEN SETUP COMPLETE!"
 echo "==============================================${NC}"
 echo ""
-echo "Dataset: data/$DATASET_NAME ($NUM_FILES puzzles)"
+echo "Dataset: $PARENT_DIR/data/$DATASET_NAME ($NUM_FILES puzzles)"
 echo ""
 echo "To use I-RAVEN for training:"
 echo "  1. Edit config.py: DATASET_TYPE = 'iraven'"
-echo "  2. Or use CLI:     python train.py --data_dir ./data/$DATASET_NAME"
+echo "  2. Or use CLI:     python train.py --data_dir $PARENT_DIR/data/$DATASET_NAME"
 echo ""
 echo "To compare RAVEN vs I-RAVEN:"
-echo "  python train.py --data_dir ./data/raven_large --epochs 10"
-echo "  python train.py --data_dir ./data/$DATASET_NAME --epochs 10"
+echo "  python train.py --data_dir $PARENT_DIR/data/raven_large --epochs 10"
+echo "  python train.py --data_dir $PARENT_DIR/data/$DATASET_NAME --epochs 10"
 echo ""

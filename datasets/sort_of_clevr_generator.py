@@ -255,10 +255,16 @@ class SortOfCLEVRDataset:
 
 if __name__ == '__main__':
     import argparse
+    
+    # Get the parent directory of the script location (for consistent data path)
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+    DEFAULT_SAVE_DIR = os.path.join(PARENT_DIR, 'data', 'sort_of_clevr')
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_images', type=int, default=10000)
     parser.add_argument('--questions_per_image', type=int, default=10)
-    parser.add_argument('--save_dir', type=str, default='./data/sort_of_clevr')
+    parser.add_argument('--save_dir', type=str, default=DEFAULT_SAVE_DIR)
     args = parser.parse_args()
     
     generate_dataset(
