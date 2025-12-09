@@ -22,14 +22,14 @@ from PIL import Image, ImageDraw
 from tqdm import tqdm
 
 
-# Colors: (R, G, B, name)
+# Colors: soft pastel palette (RGB, name)
 COLORS = [
-    ((255, 0, 0), 'red'),
-    ((0, 255, 0), 'green'),
-    ((0, 0, 255), 'blue'),
-    ((255, 255, 0), 'yellow'),
-    ((255, 165, 0), 'orange'),
-    ((128, 128, 128), 'gray'),
+    ((255, 107, 107), 'coral'),      # soft red
+    ((78, 205, 196), 'teal'),        # soft cyan
+    ((107, 137, 255), 'periwinkle'), # soft blue
+    ((255, 230, 109), 'butter'),     # soft yellow
+    ((255, 159, 128), 'peach'),      # soft orange
+    ((162, 155, 254), 'lavender'),   # soft purple
 ]
 
 # Shapes
